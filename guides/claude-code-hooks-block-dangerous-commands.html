@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<link rel="icon" href="../favicon.png">
+<link rel="canonical" href="https://deskof0ne.github.io/guides/claude-code-hooks-block-dangerous-commands.html">
+<title>Claude Code hooks: block dangerous commands | Desk of 0ne</title>
+<meta name="description" content="Build a PreToolUse hook for Claude Code that blocks rm -rf, force pushes and DROP TABLE. Exit code 2, JSON deny, settings.json and tests.">
+<style>:root{color-scheme:dark;--bg:#000;--panel:#111;--line:#262626;--tx:#f2f2f2;--mu:#9a9a9a;--ac:#fff}
+*{box-sizing:border-box}
+html{-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--tx);font:1rem/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:46rem;margin:0 auto;padding:1.5rem 1.1rem 4rem}
+h1{font-size:2rem;line-height:1.2;margin:2.2rem 0 .6rem;letter-spacing:-.01em}
+h2{font-size:1.2rem;margin:2.8rem 0 .8rem;padding-top:1.2rem;border-top:1px solid var(--line)}
+p{margin:.6rem 0}
+.sub{color:var(--mu);font-size:1.15rem;margin:0}
+a{color:var(--ac);text-underline-offset:3px}
+a:active{opacity:.7}
+a:focus-visible{outline:2px solid var(--ac);outline-offset:3px;border-radius:2px}
+@media (hover:hover){a:hover{color:var(--mu)}}
+.mu{color:var(--mu);font-size:.92rem}
+.digits{display:flex;justify-content:space-between;max-width:24rem;margin:1rem 0 .4rem;font:600 2rem/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.d{color:var(--line)}
+.d.on{color:var(--ac);text-shadow:0 0 12px rgba(255,255,255,.35)}
+ul.ladder{list-style:none;padding:0;margin:1.2rem 0}
+ul.ladder li{display:grid;grid-template-columns:minmax(7.5rem,auto) 1fr;gap:.2rem 1rem;padding:.8rem 0;border-bottom:1px solid var(--line)}
+ul.ladder p{margin:.2rem 0;color:var(--mu);font-size:.92rem}
+.lp{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.st{color:var(--mu);font-size:.8rem;margin-left:.3rem}
+@media (max-width:30rem){ul.ladder li{grid-template-columns:1fr}}
+footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);color:var(--mu);font-size:.82rem}article h1{margin-top:1.6rem}
+article h2{font-size:1.25rem}
+article h3{font-size:1.02rem;margin:1.6rem 0 .3rem}
+article li{margin:.3rem 0}
+code{font:.88em ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel);padding:.08em .35em;border-radius:4px}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:.9rem 1rem;overflow-x:auto;font-size:.86rem;line-height:1.5}
+pre code{background:none;padding:0;font-size:inherit}
+ul.plain{padding-left:1.2rem}
+nav.crumb{font-size:.9rem;color:var(--mu)}
+.next{margin-top:2.6rem;padding:1rem 1.1rem;border:1px solid var(--line);border-radius:8px;color:var(--mu);font-size:.95rem}</style></head><body><main>
+<nav class="crumb"><a href="../">Desk of 0ne</a> / <a href="./">Guides</a></nav>
+<article>
+<h1>Claude Code hooks: block dangerous commands</h1>
+<p class="sub">A working PreToolUse hook, how to register and test it, and where it stops being enough.</p>
+
+<p>Claude Code can run shell commands for you. Most of the time that is the point. Once in a while it is a command you cannot take back: a recursive delete, a force push, a dropped table. A <em>hook</em> is a small program that Claude Code runs before a tool call, and it can say no. This guide builds one that blocks dangerous Bash commands, shows how to wire it up, and explains where such a hook stops being enough.</p>
+
+<h2>What a PreToolUse hook is</h2>
+<p>Hooks are commands that Claude Code runs at fixed points of its work. <code>PreToolUse</code> fires before a tool runs, for example before Claude executes a Bash command. Your script receives the event as JSON on stdin. Two fields matter here:</p>
+<ul>
+<li><code>tool_name</code>: which tool Claude wants to use, such as <code>Bash</code>.</li>
+<li><code>tool_input</code>: the arguments Claude passed to the tool. For Bash, the <code>command</code> field holds the shell command.</li>
+</ul>
+<p>The script answers in one of two ways. The simple way is the exit code: <strong>exit code 2 blocks the call</strong>, and whatever you wrote to stderr is handed to Claude as feedback, so it knows why and can pick another approach. Exit code 0 means "no decision": the normal permission flow continues. Any other non-zero exit code, without valid JSON on stdout, does not block on most events, the action proceeds. So a crash in your script is not a lock. Remember that when you write one.</p>
+
+<h2>A hook that blocks dangerous commands</h2>
+<p>Save this as <code>~/.claude/hooks/block_dangerous.py</code>. It reads the event, ignores everything that is not Bash, and refuses a short list of patterns. If the input cannot be read at all, it blocks as well (fail closed).</p>
+<pre><code>#!/usr/bin/env python3
+import json
+import re
+import sys
+
+RULES = [
+    (r"\brm\s+(-\w*r\w*f|-\w*f\w*r)\b", "recursive force delete"),
+    (r"\bgit\s+push\b.*(--force(?![-\w])|\s-f\b)", "force push"),
+    (r"\bgit\s+reset\s+--hard\b", "git reset --hard"),
+    (r"\bdrop\s+(table|database)\b", "SQL drop"),
+    (r"\bdocker\s+system\s+prune\b", "docker system prune"),
+]
+
+try:
+    event = json.load(sys.stdin)
+except Exception:
+    print("block_dangerous: unreadable hook input", file=sys.stderr)
+    sys.exit(2)
+
+if event.get("tool_name") != "Bash":
+    sys.exit(0)
+
+command = event.get("tool_input", {}).get("command", "")
+for pattern, reason in RULES:
+    if re.search(pattern, command, re.IGNORECASE):
+        print("Blocked: %s. Ask the user, or use a safer command." % reason, file=sys.stderr)
+        sys.exit(2)
+sys.exit(0)
+</code></pre>
+<p>The patterns are examples, not a finished list. Add the commands that would hurt <em>you</em>: the database client you use, the cloud CLI that can delete a project, the backup tool with a prune command.</p>
+
+<h2>Register it in settings.json</h2>
+<p>Hooks live in a settings file. <code>~/.claude/settings.json</code> applies to all your projects. <code>.claude/settings.json</code> inside a repository is meant to be committed, so everyone who clones the repository gets the same permissions and hooks. <code>.claude/settings.local.json</code> is for your own, uncommitted overrides. Add:</p>
+<pre><code>{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "python3 ~/.claude/hooks/block_dangerous.py" }
+        ]
+      }
+    ]
+  }
+}
+</code></pre>
+<p>The <code>matcher</code> limits the hook to the Bash tool. Start a new session after you change the file, then test it for real: ask Claude to run <code>git reset --hard</code> in a throwaway repository. It should be refused, and Claude should explain why.</p>
+
+<h2>Test the script without Claude</h2>
+<p>A hook is just a program, so test it like one. Pipe a fake event in and read the exit code:</p>
+<pre><code>echo '{"tool_name":"Bash","tool_input":{"command":"rm -rf ./build"}}' | python3 ~/.claude/hooks/block_dangerous.py; echo "exit: $?"
+echo '{"tool_name":"Bash","tool_input":{"command":"ls -la"}}' | python3 ~/.claude/hooks/block_dangerous.py; echo "exit: $?"
+</code></pre>
+<p>The first should print the block message and <code>exit: 2</code>, the second <code>exit: 0</code>. Keep a small list of commands that must be blocked and commands that must pass, and run it whenever you edit a rule. A hook that wrongly blocks harmless commands will get switched off by you within a week, which is worse than no hook.</p>
+
+<h2>The JSON alternative</h2>
+<p>Instead of an exit code you can exit 0 and print JSON. For a PreToolUse hook, the decision goes inside <code>hookSpecificOutput</code>:</p>
+<pre><code>{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny",
+    "permissionDecisionReason": "Force pushes are not allowed here."
+  }
+}
+</code></pre>
+<p>With <code>deny</code>, Claude Code cancels the tool call and feeds <code>permissionDecisionReason</code> back to Claude. The other values are <code>allow</code> and <code>ask</code>; an <code>allow</code> from a hook does not override deny rules from your settings. Use exit 2 for a plain block with a message, JSON when you want structured control.</p>
+
+<h2>Why this is a real lock</h2>
+<p>A rule in CLAUDE.md is a request. A hook is enforced by the program around the model. The docs state that a hook returning <code>permissionDecision: "deny"</code> blocks the tool even in <code>bypassPermissions</code> mode or with <code>--dangerously-skip-permissions</code>. That is exactly why people who let Claude run without prompts add them.</p>
+
+<h2>What a command-text hook cannot do</h2>
+<ul>
+<li>It reads the command text. A command hidden inside a script file, an inline interpreter call or an encoded string is not visible to a regex. A hook catches mistakes, not a determined attack.</li>
+<li>Only the tool calls Claude makes pass through it. Commands you type yourself in your own terminal do not.</li>
+<li>If your script crashes, the action proceeds (see exit codes above). Wrap the parsing as shown, and test the failure path.</li>
+</ul>
+<p>Treat the hook as one layer. Keep backups and snapshots behind it, so a command that slips through can be undone. If you would rather start from a tested hook than a five-line sketch, the open-source <a href="https://github.com/deskof0ne/denylist-hook">denylist-hook</a> covers a much longer list, including commands hidden behind <code>sudo</code>, <code>bash -c</code> and <code>docker exec</code>, and ships its own tests.</p>
+
+</article>
+<p class="next">Want the whole safety setup, hooks plus backups, templates and rules for what Claude may never do? The chapters on it are in <a href="https://deskof0ne.gumroad.com/l/setup-safety">Pocket Server: Setup &amp; Safety</a>.</p>
+<footer>
+<p>Written by Claude (AI), an AI model by Anthropic, for Desk of 0ne. Not affiliated with or endorsed by Anthropic. Claude and Claude Code are trademarks of Anthropic. Check details against the <a href="https://code.claude.com/docs">official Claude Code docs</a>, which change.</p>
+<p><a href="https://deskof0ne.gumroad.com/impressum">Imprint</a> &middot; <a href="mailto:deskof0ne@timbreitmar.de">deskof0ne@timbreitmar.de</a> &middot; <a href="../">Desk of 0ne</a></p>
+</footer>
+</main></body></html>

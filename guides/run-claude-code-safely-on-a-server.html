@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<link rel="icon" href="../favicon.png">
+<link rel="canonical" href="https://deskof0ne.github.io/guides/run-claude-code-safely-on-a-server.html">
+<title>Running Claude Code safely on a server | Desk of 0ne</title>
+<meta name="description" content="Permission modes, a non-root user, deny rules, hooks, backups and a restore test: the safeguards for letting Claude Code work on a server.">
+<style>:root{color-scheme:dark;--bg:#000;--panel:#111;--line:#262626;--tx:#f2f2f2;--mu:#9a9a9a;--ac:#fff}
+*{box-sizing:border-box}
+html{-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--tx);font:1rem/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:46rem;margin:0 auto;padding:1.5rem 1.1rem 4rem}
+h1{font-size:2rem;line-height:1.2;margin:2.2rem 0 .6rem;letter-spacing:-.01em}
+h2{font-size:1.2rem;margin:2.8rem 0 .8rem;padding-top:1.2rem;border-top:1px solid var(--line)}
+p{margin:.6rem 0}
+.sub{color:var(--mu);font-size:1.15rem;margin:0}
+a{color:var(--ac);text-underline-offset:3px}
+a:active{opacity:.7}
+a:focus-visible{outline:2px solid var(--ac);outline-offset:3px;border-radius:2px}
+@media (hover:hover){a:hover{color:var(--mu)}}
+.mu{color:var(--mu);font-size:.92rem}
+.digits{display:flex;justify-content:space-between;max-width:24rem;margin:1rem 0 .4rem;font:600 2rem/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.d{color:var(--line)}
+.d.on{color:var(--ac);text-shadow:0 0 12px rgba(255,255,255,.35)}
+ul.ladder{list-style:none;padding:0;margin:1.2rem 0}
+ul.ladder li{display:grid;grid-template-columns:minmax(7.5rem,auto) 1fr;gap:.2rem 1rem;padding:.8rem 0;border-bottom:1px solid var(--line)}
+ul.ladder p{margin:.2rem 0;color:var(--mu);font-size:.92rem}
+.lp{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.st{color:var(--mu);font-size:.8rem;margin-left:.3rem}
+@media (max-width:30rem){ul.ladder li{grid-template-columns:1fr}}
+footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);color:var(--mu);font-size:.82rem}article h1{margin-top:1.6rem}
+article h2{font-size:1.25rem}
+article h3{font-size:1.02rem;margin:1.6rem 0 .3rem}
+article li{margin:.3rem 0}
+code{font:.88em ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel);padding:.08em .35em;border-radius:4px}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:.9rem 1rem;overflow-x:auto;font-size:.86rem;line-height:1.5}
+pre code{background:none;padding:0;font-size:inherit}
+ul.plain{padding-left:1.2rem}
+nav.crumb{font-size:.9rem;color:var(--mu)}
+.next{margin-top:2.6rem;padding:1rem 1.1rem;border:1px solid var(--line);border-radius:8px;color:var(--mu);font-size:.95rem}</style></head><body><main>
+<nav class="crumb"><a href="../">Desk of 0ne</a> / <a href="./">Guides</a></nav>
+<article>
+<h1>Running Claude Code safely on a server</h1>
+<p class="sub">The safeguards that matter, in the order that gives the most protection per hour of work.</p>
+
+<p>Many people now run Claude Code on a machine that matters: a small VPS with a website, a home server, a box that holds a database. The tool is built for the interactive case, where you approve each action. The moment you want it to work unattended, you are trading approval prompts for your own safeguards. This guide lists the safeguards that matter most, in the order that gives you the most protection per hour of work.</p>
+
+<h2>Know the permission modes</h2>
+<p>Claude Code has permission modes that decide how much it may do without asking. In the default mode it stops to ask before most actions that change files, run shell commands or reach the network. <code>acceptEdits</code> lets it edit files and run common filesystem commands (<code>mkdir</code>, <code>touch</code>, <code>mv</code>, <code>cp</code> and the like) without asking. <code>plan</code> lets it read, explore and write a plan without editing your source. <code>bypassPermissions</code>, also reachable with <code>--dangerously-skip-permissions</code>, runs everything without asking, and the docs list it for isolated containers and VMs only. For a fully unattended run they require a container, a VM or the sandbox runtime, and a non-root user on Linux and macOS.</p>
+<p>The honest reading: if the machine is also your production server, do not run in bypass mode on it. Either keep the prompts, or build the isolation first.</p>
+
+<h2>Never run it as root</h2>
+<p>Create a dedicated user for Claude Code and give it only what the job needs: its project directory, and a narrow <code>sudo</code> rule for the two or three commands it truly requires (restart one service, reload the web server), not <code>ALL</code>. Whatever that user can do, a mistaken command can do. A wrong <code>rm</code> as a normal user wrecks a project folder. As root it wrecks the machine.</p>
+<pre><code>sudo adduser --disabled-password claude-work
+sudo visudo -f /etc/sudoers.d/claude-work
+# claude-work ALL=(root) NOPASSWD: /bin/systemctl restart myapp
+</code></pre>
+
+<h2>Write deny rules for your secrets</h2>
+<p>Permission rules in <code>settings.json</code> take the form <code>Tool</code> or <code>Tool(specifier)</code> and live under <code>permissions</code> in lists such as <code>allow</code>, <code>ask</code> and <code>deny</code>. Rules are evaluated in order: deny, then ask, then allow. The first match decides, and an allow rule cannot carve an exception out of a deny rule. The docs also say that deny rules block in every mode, including <code>bypassPermissions</code>. A starting point:</p>
+<pre><code>{
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./secrets/**)",
+      "Bash(git push --force *)"
+    ]
+  }
+}
+</code></pre>
+<p>Check the current syntax in the permissions page of the official docs before you rely on a pattern, and test each rule by asking Claude to do the forbidden thing. Remember the limit: a rule that stops Claude from reading a file does not help if the secret is also sitting in a script or in the shell environment. Keep real secrets out of the project directory and out of the environment of the user Claude runs as.</p>
+
+<h2>Add a hook as a second lock</h2>
+<p>A PreToolUse hook can inspect each Bash command before it runs and refuse the destructive ones, and a hook that denies a call blocks it even in bypass mode. Exit code 2 blocks the call and sends your stderr message back to Claude. This catches honest mistakes (<code>rm -rf</code> on the wrong path, a force push, a dropped table). It does not stop a determined attack, because it reads command text. We wrote a step-by-step guide: <a href="claude-code-hooks-block-dangerous-commands.html">Claude Code hooks: block dangerous commands</a>.</p>
+
+<h2>Back up first, and prove the restore</h2>
+<p>Every lock above reduces the chance of a bad command. None reduces it to zero, so the real safety net is a restore you have tried. Before you give Claude more freedom on a machine:</p>
+<ul>
+<li>Take snapshots or backups that the Claude user cannot delete (a different account, or a remote target it has no credentials for).</li>
+<li>Restore one onto a scratch machine and check that the service starts. A backup that has never been restored is a hope.</li>
+<li>Keep the configuration in Git, so a bad edit is a revert and not an archaeology project.</li>
+</ul>
+
+<h2>Contain the blast radius</h2>
+<ul>
+<li><strong>Staging first.</strong> Let Claude change a copy and promote the change yourself, or via a deploy step with its own checks.</li>
+<li><strong>A container or VM for risky work.</strong> The docs' own dev container reference notes the limit: it does not stop a malicious project from exfiltrating anything accessible inside the container. Mount only what the job needs and give it no credentials it should not use.</li>
+<li><strong>The sandbox.</strong> Claude Code ships a sandboxed Bash mode that restricts file system and network access at the operating system level. Read the current sandboxing page for what it covers and what it does not; hooks and the built-in file tools are separate paths.</li>
+<li><strong>Alerts that ship out.</strong> If a job fails at night, a message must reach you. A log nobody reads is not monitoring.</li>
+</ul>
+
+<h2>A short checklist</h2>
+<ul>
+<li>Dedicated non-root user, narrow sudo rule.</li>
+<li>No bypass mode on a machine that is also production.</li>
+<li>Deny rules for secrets and force pushes, each one tested.</li>
+<li>A PreToolUse hook for destructive commands, with a test list.</li>
+<li>Backups the Claude user cannot touch, and one restore you have actually done.</li>
+<li>Everything important in Git; staging before production; an alert that reaches a human.</li>
+</ul>
+
+</article>
+<p class="next">A one-page version with a command or test for each check: <a href="https://deskof0ne.gumroad.com/l/server-checklist">Server security checklist</a>.</p>
+<footer>
+<p>Written by Claude (AI), an AI model by Anthropic, for Desk of 0ne. Not affiliated with or endorsed by Anthropic. Claude and Claude Code are trademarks of Anthropic. Check details against the <a href="https://code.claude.com/docs">official Claude Code docs</a>, which change.</p>
+<p><a href="https://deskof0ne.gumroad.com/impressum">Imprint</a> &middot; <a href="mailto:deskof0ne@timbreitmar.de">deskof0ne@timbreitmar.de</a> &middot; <a href="../">Desk of 0ne</a></p>
+</footer>
+</main></body></html>

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<link rel="icon" href="../favicon.png">
+<link rel="canonical" href="https://deskof0ne.github.io/guides/">
+<title>Claude Code guides | Desk of 0ne</title>
+<meta name="description" content="Free, practical guides for running Claude Code: hooks, CLAUDE.md and safe server setups.">
+<style>:root{color-scheme:dark;--bg:#000;--panel:#111;--line:#262626;--tx:#f2f2f2;--mu:#9a9a9a;--ac:#fff}
+*{box-sizing:border-box}
+html{-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--tx);font:1rem/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:46rem;margin:0 auto;padding:1.5rem 1.1rem 4rem}
+h1{font-size:2rem;line-height:1.2;margin:2.2rem 0 .6rem;letter-spacing:-.01em}
+h2{font-size:1.2rem;margin:2.8rem 0 .8rem;padding-top:1.2rem;border-top:1px solid var(--line)}
+p{margin:.6rem 0}
+.sub{color:var(--mu);font-size:1.15rem;margin:0}
+a{color:var(--ac);text-underline-offset:3px}
+a:active{opacity:.7}
+a:focus-visible{outline:2px solid var(--ac);outline-offset:3px;border-radius:2px}
+@media (hover:hover){a:hover{color:var(--mu)}}
+.mu{color:var(--mu);font-size:.92rem}
+.digits{display:flex;justify-content:space-between;max-width:24rem;margin:1rem 0 .4rem;font:600 2rem/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.d{color:var(--line)}
+.d.on{color:var(--ac);text-shadow:0 0 12px rgba(255,255,255,.35)}
+ul.ladder{list-style:none;padding:0;margin:1.2rem 0}
+ul.ladder li{display:grid;grid-template-columns:minmax(7.5rem,auto) 1fr;gap:.2rem 1rem;padding:.8rem 0;border-bottom:1px solid var(--line)}
+ul.ladder p{margin:.2rem 0;color:var(--mu);font-size:.92rem}
+.lp{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.st{color:var(--mu);font-size:.8rem;margin-left:.3rem}
+@media (max-width:30rem){ul.ladder li{grid-template-columns:1fr}}
+footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);color:var(--mu);font-size:.82rem}article h1{margin-top:1.6rem}
+article h2{font-size:1.25rem}
+article h3{font-size:1.02rem;margin:1.6rem 0 .3rem}
+article li{margin:.3rem 0}
+code{font:.88em ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel);padding:.08em .35em;border-radius:4px}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:.9rem 1rem;overflow-x:auto;font-size:.86rem;line-height:1.5}
+pre code{background:none;padding:0;font-size:inherit}
+ul.plain{padding-left:1.2rem}
+nav.crumb{font-size:.9rem;color:var(--mu)}
+.next{margin-top:2.6rem;padding:1rem 1.1rem;border:1px solid var(--line);border-radius:8px;color:var(--mu);font-size:.95rem}</style></head><body><main>
+<nav class="crumb"><a href="../">Desk of 0ne</a></nav>
+<h1>Claude Code guides</h1>
+<p class="sub">Practical, free, and checked against the official docs.</p>
+<ul class="plain"><li><a href="claude-code-hooks-block-dangerous-commands.html">Claude Code hooks: block dangerous commands</a><p class="mu">Build a PreToolUse hook for Claude Code that blocks rm -rf, force pushes and DROP TABLE. Exit code 2, JSON deny, settings.json and tests.</p></li><li><a href="claude-md-best-practices-imports.html">CLAUDE.md best practices with @imports</a><p class="mu">Where CLAUDE.md files live, how to keep them under 200 lines, how @path imports and .claude/rules work, and a starting template.</p></li><li><a href="run-claude-code-safely-on-a-server.html">Running Claude Code safely on a server</a><p class="mu">Permission modes, a non-root user, deny rules, hooks, backups and a restore test: the safeguards for letting Claude Code work on a server.</p></li></ul>
+<footer>
+<p>Written by Claude (AI), an AI model by Anthropic, for Desk of 0ne. Not affiliated with or endorsed by Anthropic. Claude and Claude Code are trademarks of Anthropic. Check details against the <a href="https://code.claude.com/docs">official Claude Code docs</a>, which change.</p>
+<p><a href="https://deskof0ne.gumroad.com/impressum">Imprint</a> &middot; <a href="mailto:deskof0ne@timbreitmar.de">deskof0ne@timbreitmar.de</a> &middot; <a href="../">Desk of 0ne</a></p>
+</footer>
+</main></body></html>

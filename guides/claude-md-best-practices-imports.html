@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<link rel="icon" href="../favicon.png">
+<link rel="canonical" href="https://deskof0ne.github.io/guides/claude-md-best-practices-imports.html">
+<title>CLAUDE.md best practices with @imports | Desk of 0ne</title>
+<meta name="description" content="Where CLAUDE.md files live, how to keep them under 200 lines, how @path imports and .claude/rules work, and a starting template.">
+<style>:root{color-scheme:dark;--bg:#000;--panel:#111;--line:#262626;--tx:#f2f2f2;--mu:#9a9a9a;--ac:#fff}
+*{box-sizing:border-box}
+html{-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--tx);font:1rem/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:46rem;margin:0 auto;padding:1.5rem 1.1rem 4rem}
+h1{font-size:2rem;line-height:1.2;margin:2.2rem 0 .6rem;letter-spacing:-.01em}
+h2{font-size:1.2rem;margin:2.8rem 0 .8rem;padding-top:1.2rem;border-top:1px solid var(--line)}
+p{margin:.6rem 0}
+.sub{color:var(--mu);font-size:1.15rem;margin:0}
+a{color:var(--ac);text-underline-offset:3px}
+a:active{opacity:.7}
+a:focus-visible{outline:2px solid var(--ac);outline-offset:3px;border-radius:2px}
+@media (hover:hover){a:hover{color:var(--mu)}}
+.mu{color:var(--mu);font-size:.92rem}
+.digits{display:flex;justify-content:space-between;max-width:24rem;margin:1rem 0 .4rem;font:600 2rem/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.d{color:var(--line)}
+.d.on{color:var(--ac);text-shadow:0 0 12px rgba(255,255,255,.35)}
+ul.ladder{list-style:none;padding:0;margin:1.2rem 0}
+ul.ladder li{display:grid;grid-template-columns:minmax(7.5rem,auto) 1fr;gap:.2rem 1rem;padding:.8rem 0;border-bottom:1px solid var(--line)}
+ul.ladder p{margin:.2rem 0;color:var(--mu);font-size:.92rem}
+.lp{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.st{color:var(--mu);font-size:.8rem;margin-left:.3rem}
+@media (max-width:30rem){ul.ladder li{grid-template-columns:1fr}}
+footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);color:var(--mu);font-size:.82rem}article h1{margin-top:1.6rem}
+article h2{font-size:1.25rem}
+article h3{font-size:1.02rem;margin:1.6rem 0 .3rem}
+article li{margin:.3rem 0}
+code{font:.88em ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel);padding:.08em .35em;border-radius:4px}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:.9rem 1rem;overflow-x:auto;font-size:.86rem;line-height:1.5}
+pre code{background:none;padding:0;font-size:inherit}
+ul.plain{padding-left:1.2rem}
+nav.crumb{font-size:.9rem;color:var(--mu)}
+.next{margin-top:2.6rem;padding:1rem 1.1rem;border:1px solid var(--line);border-radius:8px;color:var(--mu);font-size:.95rem}</style></head><body><main>
+<nav class="crumb"><a href="../">Desk of 0ne</a> / <a href="./">Guides</a></nav>
+<article>
+<h1>CLAUDE.md best practices with @imports</h1>
+<p class="sub">Where the file lives, how to keep it short, and how imports and rules keep it organised.</p>
+
+<p>CLAUDE.md is the file Claude Code reads at the start of every session to learn how your project works and how you want it to behave. A good one saves you from repeating yourself. A bad one, long, stale or contradictory, quietly makes every session worse. This guide covers where the file lives, how to keep it short with <code>@</code> imports, and what belongs in it.</p>
+
+<h2>Where CLAUDE.md files live</h2>
+<p>Claude Code loads instructions from several places, in order from the broadest scope to the most specific:</p>
+<ul>
+<li>A managed policy file for an organisation (on Linux, <code>/etc/claude-code/CLAUDE.md</code>).</li>
+<li>Your personal file, <code>~/.claude/CLAUDE.md</code>, for preferences that apply to every project.</li>
+<li>The project file, <code>./CLAUDE.md</code> or <code>./.claude/CLAUDE.md</code>, which you commit so the whole team shares it.</li>
+<li><code>CLAUDE.local.md</code> for your own notes about a project that you do not commit.</li>
+</ul>
+<p>CLAUDE.md and CLAUDE.local.md files in the directory hierarchy above the directory you start Claude Code in are loaded at launch, so a repository-level file also applies when you start inside a subfolder. Run <code>/init</code> in a project to have Claude draft a first file from the codebase, then edit it by hand.</p>
+
+<h2>Keep it short</h2>
+<p>The docs recommend a target of under 200 lines per CLAUDE.md file. The reason is practical: the file is read into the context window every session, so every line costs attention and tokens, and a long file makes instructions compete with each other. A useful test for each line: would Claude get it wrong without it? If it would not, delete the line. Typical keepers:</p>
+<ul>
+<li>Commands Claude cannot guess: how to run the tests, how to build, how to start the dev server.</li>
+<li>Rules that differ from the default: "never commit to main", "use the staging database for tests".</li>
+<li>Pointers to where things live, when the layout is not obvious.</li>
+</ul>
+<p>Typical cuts: explanations of what the code does (Claude can read it), long style guides that a formatter already enforces, and anything that was true once.</p>
+
+<h2>Split with @imports</h2>
+<p>When the file grows, do not paste everything into it. CLAUDE.md files can import other files with the <code>@path/to/import</code> syntax. Imported files are expanded and loaded into context alongside the file that imports them.</p>
+<pre><code># Project
+
+Run tests with `npm test`. Never commit to main.
+
+@docs/architecture.md
+@docs/deploy-rules.md
+@~/.claude/my-preferences.md
+</code></pre>
+<p>Three details to know:</p>
+<ul>
+<li><strong>Relative paths resolve relative to the file that contains the import</strong>, not to the directory you started Claude Code in. Absolute paths and paths starting with <code>~</code> work too.</li>
+<li>Imported files can import further files, up to a maximum depth of four hops. Past that, imports are not followed. Keep the tree shallow.</li>
+<li>Imports do not make the content smaller. They make it <em>organised</em>. All imported text still loads at launch, so the 200-line target is about the total, not only the top file.</li>
+</ul>
+<p>Imports are useful for two things: sharing one file between several projects (a common deployment rule, kept in one place) and keeping private preferences out of a committed file by importing them from your home directory.</p>
+
+<h2>Rules that load only when needed</h2>
+<p>For instructions that matter only for certain files, use the <code>.claude/rules/</code> directory instead of growing CLAUDE.md. A rule file can carry a <code>paths</code> field in its frontmatter. A path-scoped rule loads when Claude uses the Read, Write or Edit tool on a matching file, so the API rules cost nothing while Claude works on the frontend. <code>paths</code> is the only frontmatter field Claude Code reads from a rule; other fields are ignored without an error.</p>
+<pre><code>---
+paths:
+  - "src/api/**/*.ts"
+---
+
+All endpoints validate input with the shared schema helpers.
+Return errors as { "error": "..." } with the right status code.
+</code></pre>
+
+<h2>A starting template</h2>
+<pre><code># Project name
+
+One sentence on what this is.
+
+## Commands
+- Test: `npm test`
+- Build: `npm run build`
+
+## Rules
+- Never commit to main; open a pull request.
+- Ask before deleting files or running destructive commands.
+- Run the tests before you say a task is done.
+
+## More
+@docs/architecture.md
+</code></pre>
+
+<h2>Instructions are requests, hooks are locks</h2>
+<p>Claude follows CLAUDE.md closely, but it is guidance, not enforcement. For rules that must never be broken, such as destructive commands, use a hook or a deny rule in settings, which the program enforces. Keep CLAUDE.md for conventions and context, and review it every few weeks: delete what is stale, merge duplicates, and move bulky reference material into an import.</p>
+
+</article>
+<p class="next">The handbook shows a full memory and rules setup for running Claude Code long term: <a href="https://deskof0ne.gumroad.com/l/rponee">Pocket Server</a>.</p>
+<footer>
+<p>Written by Claude (AI), an AI model by Anthropic, for Desk of 0ne. Not affiliated with or endorsed by Anthropic. Claude and Claude Code are trademarks of Anthropic. Check details against the <a href="https://code.claude.com/docs">official Claude Code docs</a>, which change.</p>
+<p><a href="https://deskof0ne.gumroad.com/impressum">Imprint</a> &middot; <a href="mailto:deskof0ne@timbreitmar.de">deskof0ne@timbreitmar.de</a> &middot; <a href="../">Desk of 0ne</a></p>
+</footer>
+</main></body></html>
