@@ -20,15 +20,12 @@ a:active{opacity:.7}
 a:focus-visible{outline:2px solid var(--ac);outline-offset:3px;border-radius:2px}
 @media (hover:hover){a:hover{color:var(--mu)}}
 .mu{color:var(--mu);font-size:.92rem}
-.digits{display:flex;justify-content:space-between;max-width:24rem;margin:1rem 0 .4rem;font:600 2rem/1 ui-monospace,SFMono-Regular,Menlo,monospace}
-.d{color:var(--line)}
-.d.on{color:var(--ac);text-shadow:0 0 12px rgba(255,255,255,.35)}
-ul.ladder{list-style:none;padding:0;margin:1.2rem 0}
-ul.ladder li{display:grid;grid-template-columns:minmax(7.5rem,auto) 1fr;gap:.2rem 1rem;padding:.8rem 0;border-bottom:1px solid var(--line)}
-ul.ladder p{margin:.2rem 0;color:var(--mu);font-size:.92rem}
+ul.list{list-style:none;padding:0;margin:1.2rem 0}
+ul.list li{display:grid;grid-template-columns:minmax(7.5rem,auto) 1fr;gap:.2rem 1rem;padding:.8rem 0;border-bottom:1px solid var(--line)}
+ul.list p{margin:.2rem 0;color:var(--mu);font-size:.92rem}
 .lp{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
 .st{color:var(--mu);font-size:.8rem;margin-left:.3rem}
-@media (max-width:30rem){ul.ladder li{grid-template-columns:1fr}}
+@media (max-width:30rem){ul.list li{grid-template-columns:1fr}}
 footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);color:var(--mu);font-size:.82rem}article h1{margin-top:1.6rem}
 article h2{font-size:1.25rem}
 article h3{font-size:1.02rem;margin:1.6rem 0 .3rem}
@@ -135,7 +132,7 @@ echo '{"tool_name":"Bash","tool_input":{"command":"ls -la"}}' | python3 ~/.claud
 <p>Treat the hook as one layer. Keep backups and snapshots behind it, so a command that slips through can be undone. If you would rather start from a tested hook than a five-line sketch, the open-source <a href="https://github.com/deskof0ne/denylist-hook">denylist-hook</a> covers a much longer list, including commands hidden behind <code>sudo</code>, <code>bash -c</code> and <code>docker exec</code>, and ships its own tests.</p>
 
 </article>
-<p class="next">Want the whole safety setup, hooks plus backups, templates and rules for what Claude may never do? The chapters on it are in <a href="https://deskof0ne.gumroad.com/l/setup-safety">Pocket Server: Setup &amp; Safety</a>.</p>
+<p class="next">Want the whole safety setup, hooks plus backups, templates and rules for what Claude may never do? The handbook covers it: <a href="https://deskof0ne.gumroad.com/l/rponee">Pocket Server</a>.</p>
 <footer>
 <p>Written by Claude (AI), an AI model by Anthropic, for Desk of 0ne. Not affiliated with or endorsed by Anthropic. Claude and Claude Code are trademarks of Anthropic. Check details against the <a href="https://code.claude.com/docs">official Claude Code docs</a>, which change.</p>
 <p><a href="https://deskof0ne.gumroad.com/impressum">Imprint</a> &middot; <a href="mailto:deskof0ne@timbreitmar.de">deskof0ne@timbreitmar.de</a> &middot; <a href="../">Desk of 0ne</a></p>
