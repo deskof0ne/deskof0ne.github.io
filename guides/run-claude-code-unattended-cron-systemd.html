@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<link rel="icon" href="../favicon.png">
+<link rel="canonical" href="https://deskof0ne.github.io/guides/run-claude-code-unattended-cron-systemd.html">
+<title>Run Claude Code unattended with cron or systemd | Desk of 0ne</title>
+<meta name="description" content="claude -p in a scheduled job: JSON output, budget cap, tool allowlist, a systemd timer, and the usual first-run failures (login, PATH, hooks).">
+<style>:root{color-scheme:dark;--bg:#000;--panel:#111;--line:#262626;--tx:#f2f2f2;--mu:#9a9a9a;--ac:#fff}
+*{box-sizing:border-box}
+html{-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--tx);font:1rem/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:46rem;margin:0 auto;padding:1.5rem 1.1rem 4rem}
+h1{font-size:2rem;line-height:1.2;margin:2.2rem 0 .6rem;letter-spacing:-.01em}
+h2{font-size:1.2rem;margin:2.8rem 0 .8rem;padding-top:1.2rem;border-top:1px solid var(--line)}
+p{margin:.6rem 0}
+.sub{color:var(--mu);font-size:1.15rem;margin:0}
+a{color:var(--ac);text-underline-offset:3px}
+a:active{opacity:.7}
+a:focus-visible{outline:2px solid var(--ac);outline-offset:3px;border-radius:2px}
+@media (hover:hover){a:hover{color:var(--mu)}}
+.mu{color:var(--mu);font-size:.92rem}
+ul.list{list-style:none;padding:0;margin:1.2rem 0}
+ul.list li{display:grid;grid-template-columns:minmax(7.5rem,auto) 1fr;gap:.2rem 1rem;padding:.8rem 0;border-bottom:1px solid var(--line)}
+ul.list p{margin:.2rem 0;color:var(--mu);font-size:.92rem}
+.lp{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.st{color:var(--mu);font-size:.8rem;margin-left:.3rem}
+@media (max-width:30rem){ul.list li{grid-template-columns:1fr}}
+footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);color:var(--mu);font-size:.82rem}article h1{margin-top:1.6rem}
+article h2{font-size:1.25rem}
+article h3{font-size:1.02rem;margin:1.6rem 0 .3rem}
+article li{margin:.3rem 0}
+code{font:.88em ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel);padding:.08em .35em;border-radius:4px}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:.9rem 1rem;overflow-x:auto;font-size:.86rem;line-height:1.5}
+pre code{background:none;padding:0;font-size:inherit}
+ul.plain{padding-left:1.2rem}
+nav.crumb{font-size:.9rem;color:var(--mu)}
+.next{margin-top:2.6rem;padding:1rem 1.1rem;border:1px solid var(--line);border-radius:8px;color:var(--mu);font-size:.95rem}</style></head><body><main>
+<nav class="crumb"><a href="../">Desk of 0ne</a> / <a href="./">Guides</a></nav>
+<article>
+<h1>Run Claude Code unattended with cron or systemd</h1>
+<p class="sub">The non-interactive call, the flags that bound it, and why it fails the first time from cron.</p>
+
+<p>The point of running Claude Code on a server is often that it works while you do not: a nightly review, a morning summary, a job that reacts to a file. Claude Code has a non-interactive mode for this. This guide shows the one-line form, the flags that keep an unattended run bounded, and what usually goes wrong the first time it runs from <code>cron</code> or a systemd timer.</p>
+
+<h2>The non-interactive call</h2>
+<p><code>claude -p "your prompt"</code> (long form <code>--print</code>) runs one prompt, prints the answer and exits. There is no prompt to approve at the keyboard, so every permission question has to be answered in advance by your settings and flags. With <code>--output-format json</code> you get structured output with the result, a session ID and metadata, which a script can parse:</p>
+<pre><code>claude -p "Summarise the failed units in the log below" --output-format json &lt; /tmp/failed.txt</code></pre>
+<p>Keep the session ID if a later run should continue the same conversation: extract it with <code>jq -r '.session_id'</code> and pass it to <code>--resume</code>.</p>
+
+<h2>Bound the run before you schedule it</h2>
+<p>An unattended run has no human to stop it, so put the limits on the command line. These flags exist in the current CLI (check <code>claude --help</code> on your version, flags change):</p>
+<ul>
+<li><code>--max-budget-usd 2</code>: a dollar cap for the run (works with <code>--print</code>). A loop or an over-eager task ends at the cap instead of at the end of the month.</li>
+<li><code>--allowedTools</code> and <code>--disallowedTools</code>: name exactly the tools the job needs. A summary job needs <code>Read</code>, not <code>Bash</code>.</li>
+<li><code>--permission-mode</code>: pick the narrowest mode that lets the job finish (<code>plan</code>, <code>acceptEdits</code> and <code>dontAsk</code> are among the choices). Keep the mode that skips all checks for isolated containers only.</li>
+<li><code>--model</code>: choose a cheaper model for routine summaries.</li>
+</ul>
+<pre><code>claude -p "Review yesterday's commits for leaked secrets"   --output-format json   --max-budget-usd 2   --allowedTools "Read" "Grep" "Bash(git log:*)"   --permission-mode dontAsk</code></pre>
+<p>Test the same command by hand, as the user that will run it, before you schedule it.</p>
+
+<h2>A systemd timer instead of cron</h2>
+<p>A timer gives you logs in the journal and a failure state you can alert on. Run it as the dedicated non-root user, not as root.</p>
+<pre><code># /etc/systemd/system/nightly-review.service
+[Unit]
+Description=Nightly Claude Code review
+OnFailure=notify-failure@%n.service
+
+[Service]
+Type=oneshot
+User=claude-work
+WorkingDirectory=/srv/claude-work/project
+ExecStart=/srv/claude-work/bin/nightly-review.sh
+RuntimeMaxSec=1200
+
+# /etc/systemd/system/nightly-review.timer
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+</code></pre>
+<p>Put the <code>claude -p</code> call in <code>nightly-review.sh</code> and make the script exit non-zero when the command fails or the output is empty. <code>RuntimeMaxSec</code> is the second cap next to the dollar cap. The <code>OnFailure=</code> unit is yours to write: anything that sends you a message.</p>
+
+<h2>What breaks the first time</h2>
+<ul>
+<li><strong>Not logged in for that user.</strong> The scheduled job runs as a different user or without your shell environment. Log in once as that user, or provide an API key through the unit's <code>EnvironmentFile=</code> (mode 600, never in the script).</li>
+<li><strong>Wrong working directory.</strong> Claude Code reads <code>CLAUDE.md</code> and project settings from the directory it starts in. Set <code>WorkingDirectory=</code> (or <code>cd</code> in the script).</li>
+<li><strong>Command not found.</strong> cron and systemd start with a minimal <code>PATH</code>. Use the absolute path of <code>claude</code> (see <code>command -v claude</code>), or set <code>PATH</code> in the unit.</li>
+<li><strong>A hook you rely on is skipped.</strong> The <code>--bare</code> flag skips hooks, plugins, auto-memory and <code>CLAUDE.md</code> discovery. Do not use it on a job whose safety depends on your deny hook.</li>
+<li><strong>Silent failure.</strong> A job that fails at 03:30 and tells nobody is the worst outcome. Make failure loud: non-zero exit plus an alert that reaches you.</li>
+<li><strong>Untrusted input.</strong> If the prompt includes text from outside (mail, tickets, web pages), treat it as data: give the run read-only tools and no secrets. A narrow tool list is what limits the damage of a hostile sentence in that text.</li>
+</ul>
+
+<h2>A short checklist</h2>
+<ul>
+<li>Dedicated non-root user; credentials in a root-owned mode-600 file.</li>
+<li>Dollar cap, timeout and an explicit tool list on every scheduled call.</li>
+<li>Absolute paths, a set working directory, run once by hand first.</li>
+<li>Non-zero exit on failure and an alert that reaches a human.</li>
+<li>Deny hook and permission rules in place, and no <code>--bare</code> where they matter.</li>
+</ul>
+
+</article>
+<p class="next">The handbook covers unattended jobs end to end: alerts, backups, and rules for what the agent may never do: <a href="https://deskof0ne.gumroad.com/l/rponee">Pocket Server</a>.</p>
+<footer>
+<p>Written by Claude (AI), an AI model by Anthropic, for Desk of 0ne. Not affiliated with or endorsed by Anthropic. Claude and Claude Code are trademarks of Anthropic. Check details against the <a href="https://code.claude.com/docs">official Claude Code docs</a>, which change.</p>
+<p><a href="https://deskof0ne.gumroad.com/impressum">Imprint</a> &middot; <a href="mailto:deskof0ne@timbreitmar.de">deskof0ne@timbreitmar.de</a> &middot; <a href="../">Desk of 0ne</a></p>
+</footer>
+</main></body></html>
