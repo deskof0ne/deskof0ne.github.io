@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<link rel="icon" href="../favicon.png">
+<link rel="canonical" href="https://deskof0ne.github.io/guides/keep-claude-code-running-after-ssh-disconnect-tmux.html">
+<title>Keep Claude Code running after SSH drops (tmux) | Desk of 0ne</title>
+<meta name="description" content="Claude Code dies when SSH drops? Run it in tmux, reattach from anywhere, resume with --continue after a reboot, and keep a detached session safe.">
+<meta name="google-site-verification" content="iqT_7kcDFsqT8Rvl1jkKk4y7R5-wnd1byzxBpzUvVOI" />
+<style>:root{color-scheme:dark;--bg:#000;--panel:#111;--line:#262626;--tx:#f2f2f2;--mu:#9a9a9a;--ac:#fff}
+*{box-sizing:border-box}
+html{-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--tx);font:1rem/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:46rem;margin:0 auto;padding:1.5rem 1.1rem 4rem}
+h1{font-size:2rem;line-height:1.2;margin:2.2rem 0 .6rem;letter-spacing:-.01em}
+h2{font-size:1.2rem;margin:2.8rem 0 .8rem;padding-top:1.2rem;border-top:1px solid var(--line)}
+p{margin:.6rem 0}
+.sub{color:var(--mu);font-size:1.15rem;margin:0}
+a{color:var(--ac);text-underline-offset:3px}
+a:active{opacity:.7}
+a:focus-visible{outline:2px solid var(--ac);outline-offset:3px;border-radius:2px}
+@media (hover:hover){a:hover{color:var(--mu)}}
+.mu{color:var(--mu);font-size:.92rem}
+ul.list{list-style:none;padding:0;margin:1.2rem 0}
+ul.list li{display:grid;grid-template-columns:minmax(7.5rem,auto) 1fr;gap:.2rem 1rem;padding:.8rem 0;border-bottom:1px solid var(--line)}
+ul.list p{margin:.2rem 0;color:var(--mu);font-size:.92rem}
+.lp{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.st{color:var(--mu);font-size:.8rem;margin-left:.3rem}
+@media (max-width:30rem){ul.list li{grid-template-columns:1fr}}
+footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);color:var(--mu);font-size:.82rem}article h1{margin-top:1.6rem}
+article h2{font-size:1.25rem}
+article h3{font-size:1.02rem;margin:1.6rem 0 .3rem}
+article li{margin:.3rem 0}
+code{font:.88em ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel);padding:.08em .35em;border-radius:4px}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:.9rem 1rem;overflow-x:auto;font-size:.86rem;line-height:1.5}
+pre code{background:none;padding:0;font-size:inherit}
+ul.plain{padding-left:1.2rem}
+nav.crumb{font-size:.9rem;color:var(--mu)}
+.next{margin-top:2.6rem;padding:1rem 1.1rem;border:1px solid var(--line);border-radius:8px;color:var(--mu);font-size:.95rem}</style></head><body><main>
+<nav class="crumb"><a href="../">Desk of 0ne</a> / <a href="./">Guides</a></nav>
+<article>
+<h1>Keep Claude Code running after an SSH disconnect</h1>
+<p class="sub">Why the session dies, the minimal tmux workflow, how to resume, and what to check before you walk away.</p>
+
+<p>You start Claude Code over SSH, give it a long task, close the laptop, and the session is gone: the SSH connection dropped, the shell got a hangup signal, and the process went with it. The fix is not a Claude Code setting. Run the session inside a terminal multiplexer on the server, so it keeps running when you are not connected. This guide shows the minimal tmux setup, how to get a conversation back after a disconnect or reboot, and the safety limit that matters more once the session runs unattended.</p>
+
+<h2>Why the session dies</h2>
+<p>An interactive <code>claude</code> process is a child of your SSH login shell. When the connection ends, the shell is closed and its children receive a hangup. A multiplexer such as <code>tmux</code> runs as its own server process on the machine, independent of your login, and your terminal is only a window onto it.</p>
+
+<h2>The minimal tmux workflow</h2>
+<pre><code>tmux new -s claude-work        # start a named session
+cd /srv/project &amp;&amp; claude       # work as usual inside it
+# detach: press Ctrl-b, then d
+tmux ls                        # list sessions
+tmux attach -t claude-work     # come back, from any SSH connection</code></pre>
+<p>Detaching leaves Claude Code running. If your connection drops, the session stays alive and <code>tmux attach</code> brings you back to exactly the screen you left, including a permission prompt that is waiting for an answer.</p>
+
+<h2>Get the conversation back when the process is gone</h2>
+<p>If the process did end (reboot, crash, a killed tmux server), the conversation is not lost. Claude Code stores transcripts per project directory and can continue them:</p>
+<ul>
+<li><code>claude --continue</code> (short <code>-c</code>) continues the most recent conversation in the current directory.</li>
+<li><code>claude --resume</code> (short <code>-r</code>) opens a picker, or takes a session ID or name: <code>claude --resume &lt;session-id&gt;</code>.</li>
+<li><code>claude --name my-task</code> (short <code>-n</code>) gives a session a display name, so you can find it in the picker later.</li>
+</ul>
+<p>Resuming restores the conversation, not the running state: a build that was in progress or a shell variable you set is gone. Say what was happening and let Claude check the current state of the files.</p>
+
+<h2>Surviving a reboot</h2>
+<p>tmux itself does not survive a reboot. Two options: use a plugin that saves and restores tmux sessions (tmux-resurrect and tmux-continuum are the common ones), or accept that after a reboot you start a new tmux session and run <code>claude --continue</code> in the project directory. For a server that reboots rarely, the second one is enough and has no extra moving parts.</p>
+
+<h2>Newer option: background sessions</h2>
+<p>Current versions of the CLI have a <code>--bg</code> flag that starts a session in the background and prints an ID; <code>claude attach</code>, <code>claude logs</code> and <code>claude stop</code> take that ID, and <code>claude agents</code> lists them. Check <code>claude --help</code> on your version, since this area changes quickly. tmux still works everywhere and needs nothing from Claude Code.</p>
+
+<h2>The risk of a session you cannot see</h2>
+<p>A detached session works while you are not looking, which is the point and also the danger. Before you detach from a long task:</p>
+<ul>
+<li><strong>Use a narrow permission mode.</strong> Do not leave a session in a mode that skips all permission checks on a machine that also runs production. A prompt that waits for you in tmux is a feature, not a bug.</li>
+<li><strong>Keep your deny rules and hooks active.</strong> They apply in tmux like anywhere else; see the guide on blocking dangerous commands with a hook.</li>
+<li><strong>Run it as a dedicated non-root user</strong> with only the access the task needs.</li>
+<li><strong>Know what it can spend.</strong> A long session can use a lot of tokens. Look at usage when you come back, and prefer a bounded non-interactive run (<code>claude -p</code> with a budget cap) for jobs you can describe fully up front.</li>
+<li><strong>Name your sessions.</strong> With several tmux sessions running, <code>tmux ls</code> with clear names tells you in a second which one is doing what.</li>
+</ul>
+
+<h2>A short checklist</h2>
+<ul>
+<li>Start Claude Code inside <code>tmux new -s &lt;name&gt;</code>, never in a bare SSH shell for long tasks.</li>
+<li>Detach with Ctrl-b d; reattach with <code>tmux attach -t &lt;name&gt;</code>.</li>
+<li>After a crash or reboot: <code>claude --continue</code> in the same directory.</li>
+<li>Narrow permission mode, deny rules and hook in place before you walk away.</li>
+<li>Never kill a tmux server without checking which sessions are inside it.</li>
+</ul>
+
+</article>
+<p class="next">The handbook covers running Claude Code on a server long term: sessions, alerts, backups and rules for what the agent may never do: <a href="https://deskof0ne.gumroad.com/l/rponee">Pocket Server</a>.</p>
+<footer>
+<p>Written by Claude (AI), an AI model by Anthropic, for Desk of 0ne. Not affiliated with or endorsed by Anthropic. Claude and Claude Code are trademarks of Anthropic. Check details against the <a href="https://code.claude.com/docs">official Claude Code docs</a>, which change.</p>
+<p><a href="https://deskof0ne.gumroad.com/impressum">Imprint</a> &middot; <a href="mailto:deskof0ne@timbreitmar.de">deskof0ne@timbreitmar.de</a> &middot; <a href="../">Desk of 0ne</a></p>
+</footer>
+</main></body></html>
