@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<link rel="icon" href="../favicon.png">
+<link rel="canonical" href="https://deskof0ne.github.io/guides/claude-code-cost-usage-limits-budget.html">
+<title>Claude Code costs: track usage and cap spend | Desk of 0ne</title>
+<meta name="description" content="How to check what a Claude Code session costs (/usage), why it grows, how /clear and /compact help, and how --max-budget-usd caps unattended runs.">
+<meta name="google-site-verification" content="iqT_7kcDFsqT8Rvl1jkKk4y7R5-wnd1byzxBpzUvVOI" />
+<style>:root{color-scheme:dark;--bg:#000;--panel:#111;--line:#262626;--tx:#f2f2f2;--mu:#9a9a9a;--ac:#fff}
+*{box-sizing:border-box}
+html{-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--tx);font:1rem/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:46rem;margin:0 auto;padding:1.5rem 1.1rem 4rem}
+h1{font-size:2rem;line-height:1.2;margin:2.2rem 0 .6rem;letter-spacing:-.01em}
+h2{font-size:1.2rem;margin:2.8rem 0 .8rem;padding-top:1.2rem;border-top:1px solid var(--line)}
+p{margin:.6rem 0}
+.sub{color:var(--mu);font-size:1.15rem;margin:0}
+a{color:var(--ac);text-underline-offset:3px}
+a:active{opacity:.7}
+a:focus-visible{outline:2px solid var(--ac);outline-offset:3px;border-radius:2px}
+@media (hover:hover){a:hover{color:var(--mu)}}
+.mu{color:var(--mu);font-size:.92rem}
+ul.list{list-style:none;padding:0;margin:1.2rem 0}
+ul.list li{display:grid;grid-template-columns:minmax(7.5rem,auto) 1fr;gap:.2rem 1rem;padding:.8rem 0;border-bottom:1px solid var(--line)}
+ul.list p{margin:.2rem 0;color:var(--mu);font-size:.92rem}
+.lp{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.st{color:var(--mu);font-size:.8rem;margin-left:.3rem}
+@media (max-width:30rem){ul.list li{grid-template-columns:1fr}}
+footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);color:var(--mu);font-size:.82rem}article h1{margin-top:1.6rem}
+article h2{font-size:1.25rem}
+article h3{font-size:1.02rem;margin:1.6rem 0 .3rem}
+article li{margin:.3rem 0}
+code{font:.88em ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel);padding:.08em .35em;border-radius:4px}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:.9rem 1rem;overflow-x:auto;font-size:.86rem;line-height:1.5}
+pre code{background:none;padding:0;font-size:inherit}
+ul.plain{padding-left:1.2rem}
+nav.crumb{font-size:.9rem;color:var(--mu)}
+.next{margin-top:2.6rem;padding:1rem 1.1rem;border:1px solid var(--line);border-radius:8px;color:var(--mu);font-size:.95rem}</style></head><body><main>
+<nav class="crumb"><a href="../">Desk of 0ne</a> / <a href="./">Guides</a></nav>
+<article>
+<h1>Claude Code costs: see usage, keep context small, cap spend</h1>
+<p class="sub">Where the tokens go, the commands that keep a session cheap, and a hard cap for scheduled runs.</p>
+
+<p>Claude Code bills by tokens, either against a subscription plan's limits or per token through an API key. Either way, a few habits decide whether a session stays cheap or quietly burns through your allowance. This guide shows how to see what a session costs, the three things that make it grow, and how to put a hard cap on unattended runs. Commands and flags are from Claude Code 2.1.x; check <code>claude --help</code> and <code>/help</code> on your version.</p>
+
+<h2>See what you are spending</h2>
+<p>Inside a session, <code>/usage</code> shows the session cost, your plan usage and what is contributing to your limits. <code>/cost</code> and <code>/stats</code> are aliases for the same command. Look at it after a long task, not only when a limit warning appears.</p>
+<p>For a bounded non-interactive run, ask for JSON and read the cost from the result:</p>
+<pre><code>claude -p "summarize the failing tests" --output-format json | jq '.total_cost_usd'</code></pre>
+<p>The result object carries a <code>total_cost_usd</code> field, so a wrapper script can log what every scheduled run cost.</p>
+
+<h2>Why a session gets expensive</h2>
+<ul>
+<li><strong>Context grows with every turn.</strong> Each new message is sent together with the whole conversation so far. A late question in a long session costs far more than the same question in a fresh one. <code>/context</code> draws the current context usage as a grid, so you can see how full it is.</li>
+<li><strong>Big tool output.</strong> A command that prints thousands of log lines puts all of them into the context. Filter first: <code>tail</code>, <code>grep</code>, <code>head</code>, or ask Claude to search instead of dumping a file.</li>
+<li><strong>The model and effort setting.</strong> A larger model with high effort is the right tool for design and hard debugging, and wasted money for renaming a variable.</li>
+</ul>
+
+<h2>Keep the context small</h2>
+<ul>
+<li><code>/clear</code> starts a new session with empty context. The previous one stays on disk and can be resumed with <code>/resume</code>. Use it whenever the topic changes.</li>
+<li><code>/compact</code> frees up context by summarizing the conversation so far. Use it when you continue the same task but the history has become long.</li>
+<li>Put stable rules in <code>CLAUDE.md</code> instead of repeating them in chat, and keep that file short; it is read at the start of every session.</li>
+<li>Hand a broad search ("where is X used?") to a subagent. It reads many files in its own context and only the answer comes back.</li>
+</ul>
+
+<h2>Pick model and effort on purpose</h2>
+<p><code>/model</code> sets the model and <code>/effort</code> sets the effort level for the session. On the command line the same are <code>--model</code> (an alias such as <code>sonnet</code> or <code>opus</code>, or a full model name) and <code>--effort</code> with one of low, medium, high, xhigh, max. A sensible default: a mid-sized model with medium effort for routine work, the larger one for planning and hard problems.</p>
+
+<h2>A hard cap for unattended runs</h2>
+<p>For jobs that run without you, <code>--max-budget-usd</code> sets the maximum amount to spend on API calls. It only works together with <code>-p</code> (print mode):</p>
+<pre><code>claude -p "run the nightly checks and report" \
+  --max-budget-usd 2.00 \
+  --output-format json</code></pre>
+<p>When the cap is reached the run stops and the JSON result reports a budget-exceeded error subtype instead of a normal result, so a wrapper should check the exit status and the result before treating the run as successful. Combine the cap with a narrow <code>--allowedTools</code> list; the cron and systemd guide shows the full setup.</p>
+
+<h2>A short checklist</h2>
+<ul>
+<li>Check <code>/usage</code> after every long task.</li>
+<li><code>/clear</code> on a topic change, <code>/compact</code> when the same task runs long.</li>
+<li>Filter command output before it reaches the context.</li>
+<li>Match model and effort to the task.</li>
+<li>Every scheduled <code>claude -p</code> run gets <code>--max-budget-usd</code> and a log of <code>total_cost_usd</code>.</li>
+</ul>
+
+</article>
+<p class="next">The handbook covers running Claude Code on a server long term: sessions, alerts, backups and rules for what the agent may never do: <a href="https://deskof0ne.gumroad.com/l/rponee">Pocket Server</a>.</p>
+<footer>
+<p>Written by Claude (AI), an AI model by Anthropic, for Desk of 0ne. Not affiliated with or endorsed by Anthropic. Claude and Claude Code are trademarks of Anthropic. Check details against the <a href="https://code.claude.com/docs">official Claude Code docs</a>, which change.</p>
+<p><a href="https://deskof0ne.gumroad.com/impressum">Imprint</a> &middot; <a href="mailto:deskof0ne@timbreitmar.de">deskof0ne@timbreitmar.de</a> &middot; <a href="../">Desk of 0ne</a></p>
+</footer>
+</main></body></html>
