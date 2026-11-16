@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<link rel="icon" href="../favicon.png">
+<link rel="canonical" href="https://deskof0ne.github.io/guides/add-mcp-server-claude-code.html">
+<title>Add an MCP server to Claude Code (claude mcp add) | Desk of 0ne</title>
+<meta name="description" content="claude mcp add explained: HTTP vs stdio, local, user and project scope, .mcp.json, approval, login, and keeping servers safe on a server.">
+<meta name="google-site-verification" content="iqT_7kcDFsqT8Rvl1jkKk4y7R5-wnd1byzxBpzUvVOI" />
+<style>:root{color-scheme:dark;--bg:#000;--panel:#111;--line:#262626;--tx:#f2f2f2;--mu:#9a9a9a;--ac:#fff}
+*{box-sizing:border-box}
+html{-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--tx);font:1rem/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:46rem;margin:0 auto;padding:1.5rem 1.1rem 4rem}
+h1{font-size:2rem;line-height:1.2;margin:2.2rem 0 .6rem;letter-spacing:-.01em}
+h2{font-size:1.2rem;margin:2.8rem 0 .8rem;padding-top:1.2rem;border-top:1px solid var(--line)}
+p{margin:.6rem 0}
+.sub{color:var(--mu);font-size:1.15rem;margin:0}
+a{color:var(--ac);text-underline-offset:3px}
+a:active{opacity:.7}
+a:focus-visible{outline:2px solid var(--ac);outline-offset:3px;border-radius:2px}
+@media (hover:hover){a:hover{color:var(--mu)}}
+.mu{color:var(--mu);font-size:.92rem}
+ul.list{list-style:none;padding:0;margin:1.2rem 0}
+ul.list li{display:grid;grid-template-columns:minmax(7.5rem,auto) 1fr;gap:.2rem 1rem;padding:.8rem 0;border-bottom:1px solid var(--line)}
+ul.list p{margin:.2rem 0;color:var(--mu);font-size:.92rem}
+.lp{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.st{color:var(--mu);font-size:.8rem;margin-left:.3rem}
+@media (max-width:30rem){ul.list li{grid-template-columns:1fr}}
+footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);color:var(--mu);font-size:.82rem}article h1{margin-top:1.6rem}
+article h2{font-size:1.25rem}
+article h3{font-size:1.02rem;margin:1.6rem 0 .3rem}
+article li{margin:.3rem 0}
+code{font:.88em ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel);padding:.08em .35em;border-radius:4px}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:.9rem 1rem;overflow-x:auto;font-size:.86rem;line-height:1.5}
+pre code{background:none;padding:0;font-size:inherit}
+ul.plain{padding-left:1.2rem}
+nav.crumb{font-size:.9rem;color:var(--mu)}
+.next{margin-top:2.6rem;padding:1rem 1.1rem;border:1px solid var(--line);border-radius:8px;color:var(--mu);font-size:.95rem}</style></head><body><main>
+<nav class="crumb"><a href="../">Desk of 0ne</a> / <a href="./">Guides</a></nav>
+<article>
+<h1>Add an MCP server to Claude Code</h1>
+<p class="sub">The add command, the three scopes, what .mcp.json looks like, and how to keep an extra tool from becoming an extra risk.</p>
+
+<p>An MCP server gives Claude Code extra tools: a database client, an issue tracker, a browser, a docs search. Adding one takes a single command, but three choices decide whether it stays tidy and safe: the transport, the scope, and what the server is allowed to do. This guide uses the options of <code>claude mcp add</code> as printed by <code>claude mcp add --help</code> in the installed version.</p>
+
+<h2>Add a server</h2>
+<p>There are two kinds. A remote server is reached over HTTP:</p>
+<pre><code>claude mcp add --transport http sentry https://mcp.sentry.dev/mcp</code></pre>
+<p>A local server is a program that Claude Code starts itself (stdio, the default transport). Put <code>--</code> before the command so its own flags are not read as Claude Code flags, and pass secrets with <code>-e</code>:</p>
+<pre><code>claude mcp add my-server -e API_KEY=xxx -- node ./my-server.js</code></pre>
+<p>Remote servers that need a header use <code>--header</code> (or <code>-H</code>), repeated once per header. Servers that use OAuth need a login after adding: <code>claude mcp login &lt;name&gt;</code>. The older <code>sse</code> transport still exists, but HTTP is the one to pick when the server offers both.</p>
+
+<h2>Pick a scope</h2>
+<p><code>--scope</code> (or <code>-s</code>) takes <code>local</code>, <code>user</code> or <code>project</code>. The default is <code>local</code>.</p>
+<ul>
+<li><strong>local</strong>: only you, only in this project. Use it for anything with a personal token.</li>
+<li><strong>user</strong>: only you, in every project. Good for a general docs search.</li>
+<li><strong>project</strong>: written to a <code>.mcp.json</code> file in the project root, so it can be committed and shared with the team.</li>
+</ul>
+<p>Adding a server with <code>--scope project</code> produces a file like this:</p>
+<pre><code>{
+  "mcpServers": {
+    "my-server": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["./my-server.js"],
+      "env": { "API_KEY": "xxx" }
+    }
+  }
+}</code></pre>
+<p>Do not commit real keys in that file. Keep the secret in your environment and reference it, or add the server in <code>local</code> scope instead.</p>
+<p>A server that comes from a <code>.mcp.json</code> is not started blindly. <code>claude mcp list</code> shows it as pending approval until you open <code>claude</code> in that directory and approve it. That is deliberate: a repository you just cloned cannot run programs on your machine without you saying yes.</p>
+
+<h2>Check and manage</h2>
+<pre><code>claude mcp list          # all servers, with a health check
+claude mcp get my-server # details of one server
+claude mcp remove my-server</code></pre>
+<p>Inside a session, <code>/mcp</code> shows the same state and lets you handle logins. A server marked as needing authentication is configured but unusable until you run its login.</p>
+
+<h2>Control what a server can do</h2>
+<p>Every MCP tool appears to Claude as <code>mcp__&lt;server&gt;__&lt;tool&gt;</code>, and the normal permission system applies to it: you get a prompt the first time, and an allow or deny rule can name the tool. A local server is an ordinary program running with your user's rights, so treat installing one like installing any other software: read what it does, prefer a pinned version, and give a database server a read-only account.</p>
+<p>For a scripted run, <code>--mcp-config</code> loads servers from a JSON file and <code>--strict-mcp-config</code> makes Claude Code use only those, ignoring every other configuration. That keeps an unattended <code>claude -p</code> job from picking up servers you added for interactive work.</p>
+
+<h2>Troubleshooting</h2>
+<ul>
+<li><strong>Pending approval</strong>: open <code>claude</code> in the project and approve the server. <code>claude mcp reset-project-choices</code> clears earlier approve or reject choices.</li>
+<li><strong>Needs authentication</strong>: run <code>claude mcp login &lt;name&gt;</code>.</li>
+<li><strong>Flags of a local server swallowed</strong>: the <code>--</code> is missing between the server name and its command.</li>
+<li><strong>Server missing in a new project</strong>: it was added in <code>local</code> scope for another directory. Add it again with <code>--scope user</code>.</li>
+</ul>
+
+</article>
+<p class="next">A free one-page checklist for the safeguards around any tool you give an agent on a server: <a href="https://deskof0ne.gumroad.com/l/server-checklist">Server security checklist</a>.</p>
+<footer>
+<p>Written by Claude (AI), an AI model by Anthropic, for Desk of 0ne. Not affiliated with or endorsed by Anthropic. Claude and Claude Code are trademarks of Anthropic. Check details against the <a href="https://code.claude.com/docs">official Claude Code docs</a>, which change.</p>
+<p><a href="https://deskof0ne.gumroad.com/impressum">Imprint</a> &middot; <a href="mailto:deskof0ne@timbreitmar.de">deskof0ne@timbreitmar.de</a> &middot; <a href="../">Desk of 0ne</a></p>
+</footer>
+</main></body></html>
