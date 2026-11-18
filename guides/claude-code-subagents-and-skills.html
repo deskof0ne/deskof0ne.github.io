@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<link rel="icon" href="../favicon.png">
+<link rel="canonical" href="https://deskof0ne.github.io/guides/claude-code-subagents-and-skills.html">
+<title>Claude Code subagents and skills explained | Desk of 0ne</title>
+<meta name="description" content="Subagent or skill? Working .claude/agents and SKILL.md examples, every frontmatter field checked in Claude Code 2.1.327, and how to keep both safe.">
+<meta name="google-site-verification" content="iqT_7kcDFsqT8Rvl1jkKk4y7R5-wnd1byzxBpzUvVOI" />
+<style>:root{color-scheme:dark;--bg:#000;--panel:#111;--line:#262626;--tx:#f2f2f2;--mu:#9a9a9a;--ac:#fff}
+*{box-sizing:border-box}
+html{-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--tx);font:1rem/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:46rem;margin:0 auto;padding:1.5rem 1.1rem 4rem}
+h1{font-size:2rem;line-height:1.2;margin:2.2rem 0 .6rem;letter-spacing:-.01em}
+h2{font-size:1.2rem;margin:2.8rem 0 .8rem;padding-top:1.2rem;border-top:1px solid var(--line)}
+p{margin:.6rem 0}
+.sub{color:var(--mu);font-size:1.15rem;margin:0}
+a{color:var(--ac);text-underline-offset:3px}
+a:active{opacity:.7}
+a:focus-visible{outline:2px solid var(--ac);outline-offset:3px;border-radius:2px}
+@media (hover:hover){a:hover{color:var(--mu)}}
+.mu{color:var(--mu);font-size:.92rem}
+ul.list{list-style:none;padding:0;margin:1.2rem 0}
+ul.list li{display:grid;grid-template-columns:minmax(7.5rem,auto) 1fr;gap:.2rem 1rem;padding:.8rem 0;border-bottom:1px solid var(--line)}
+ul.list p{margin:.2rem 0;color:var(--mu);font-size:.92rem}
+.lp{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.st{color:var(--mu);font-size:.8rem;margin-left:.3rem}
+@media (max-width:30rem){ul.list li{grid-template-columns:1fr}}
+footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);color:var(--mu);font-size:.82rem}article h1{margin-top:1.6rem}
+article h2{font-size:1.25rem}
+article h3{font-size:1.02rem;margin:1.6rem 0 .3rem}
+article li{margin:.3rem 0}
+code{font:.88em ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel);padding:.08em .35em;border-radius:4px}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:.9rem 1rem;overflow-x:auto;font-size:.86rem;line-height:1.5}
+pre code{background:none;padding:0;font-size:inherit}
+ul.plain{padding-left:1.2rem}
+nav.crumb{font-size:.9rem;color:var(--mu)}
+.next{margin-top:2.6rem;padding:1rem 1.1rem;border:1px solid var(--line);border-radius:8px;color:var(--mu);font-size:.95rem}</style></head><body><main>
+<nav class="crumb"><a href="../">Desk of 0ne</a> / <a href="./">Guides</a></nav>
+<article>
+<h1>Claude Code subagents and skills</h1>
+<p class="sub">The difference in one rule, two files you can copy, and the header fields each one reads.</p>
+
+<p>Claude Code has two ways to hand work a shape of its own: a <em>subagent</em> and a <em>skill</em>. They are easy to mix up, because both are a Markdown file with a short header. They solve different problems. A subagent does a job in a separate context and brings back only the answer. A skill is a set of instructions Claude loads when the task calls for them. This guide shows both, with files you can copy. Field names and paths were checked against Claude Code 2.1.327; run <code>claude --help</code> on your version.</p>
+
+<h2>Subagent or skill: the one-line rule</h2>
+<ul>
+<li><strong>Subagent</strong>: use it when the job is noisy and you only want the result. A search through hundreds of files, a log analysis, a review. The subagent works in its own context window, so the files it reads never fill yours. Only its final answer comes back.</li>
+<li><strong>Skill</strong>: use it when you want Claude to follow the same procedure every time. A release-notes routine, a commit format, a checklist. A skill adds instructions to the conversation you are already in, or can be set to run in a fork.</li>
+</ul>
+<p>Claude Code already ships subagents such as <code>Explore</code> (a read-only search agent), <code>Plan</code> and <code>general-purpose</code>. You only write your own when the built-in ones do not fit.</p>
+
+<h2>Write a subagent</h2>
+<p>A subagent is a Markdown file. The header between the <code>---</code> lines configures it, the text below is its system prompt. Put it in <code>.claude/agents/</code> to share it with a project, or in <code>~/.claude/agents/</code> to have it in every project. A file without a <code>name</code> is skipped.</p>
+<pre><code>mkdir -p .claude/agents
+cat &gt; .claude/agents/log-reader.md &lt;&lt;'EOF'
+---
+name: log-reader
+description: Reads long log files and reports only the lines that matter. Use proactively when a task needs a look into logs.
+tools: Read, Grep, Glob
+model: sonnet
+maxTurns: 12
+---
+
+You read log files. Search with Grep first, read only the matching
+regions, and answer with at most ten lines: what failed, when, and the
+likely cause. Never modify files.
+EOF</code></pre>
+<p>The <code>description</code> is what Claude reads to decide when to hand a task to this agent, so write it as a trigger ("Use when ...", "Use proactively when ..."), not as a title. <code>tools</code> replaces the default tool set; here the agent can only read and search. Leave it out and the agent inherits every tool of the main session.</p>
+<p>The other header fields this version reads:</p>
+<ul>
+<li><code>disallowedTools</code>: tools to remove from the default set. Ignored if <code>tools</code> is set.</li>
+<li><code>model</code>: an alias such as <code>sonnet</code> or <code>opus</code>, a full model ID, or <code>inherit</code> for the main model.</li>
+<li><code>effort</code>: <code>low</code>, <code>medium</code>, <code>high</code>, <code>max</code> or an integer.</li>
+<li><code>permissionMode</code>: <code>default</code>, <code>acceptEdits</code>, <code>plan</code> or <code>bypassPermissions</code>. Prefer <code>plan</code> for agents that should only look.</li>
+<li><code>maxTurns</code>: a positive integer; the agent stops after that many turns.</li>
+<li><code>skills</code>: skills preloaded into the agent.</li>
+<li><code>mcpServers</code> and <code>hooks</code>: servers and hooks that exist only while this agent runs.</li>
+<li><code>memory</code>: <code>user</code>, <code>project</code> or <code>local</code>, a folder where the agent keeps notes between runs (for <code>project</code>: <code>.claude/agent-memory/&lt;name&gt;/</code>).</li>
+<li><code>background</code>: <code>true</code> to run it as a background task by default.</li>
+<li><code>isolation</code>: <code>worktree</code> runs it in a temporary git worktree.</li>
+</ul>
+<p>The <code>/agents</code> wizard of older versions is gone: in 2.1.327 the command only tells you to ask Claude to create the subagent for you, or to edit the files in <code>.claude/agents/</code> directly. Either works. Reading the file Claude wrote is a good habit anyway.</p>
+<p>For a one-off or a scripted run you can pass agents as JSON without any file: <code>claude --agents '{"reviewer": {"description": "Reviews code", "prompt": "You are a code reviewer"}}'</code> (with <code>--print</code> the argument may also be a path to a file). <code>--agent &lt;name&gt;</code> starts the whole session as one agent.</p>
+
+<h2>Write a skill</h2>
+<p>A skill is a folder with a <code>SKILL.md</code> file, in <code>.claude/skills/&lt;name&gt;/</code> (project) or <code>~/.claude/skills/&lt;name&gt;/</code> (all projects).</p>
+<pre><code>mkdir -p .claude/skills/release-notes
+cat &gt; .claude/skills/release-notes/SKILL.md &lt;&lt;'EOF'
+---
+name: release-notes
+description: Draft release notes from the git log since the last tag. Use when asked for a changelog or release notes.
+allowed-tools: Bash(git log:*), Bash(git describe:*)
+argument-hint: [since-tag]
+disable-model-invocation: true
+---
+
+Write release notes for the changes since $ARGUMENTS (or the latest tag
+if none is given). Group the entries under Added, Changed and Fixed.
+EOF</code></pre>
+<p>You run it by typing <code>/release-notes v1.4.0</code>; whatever follows the name replaces <code>$ARGUMENTS</code>. <code>/skills</code> lists what Claude Code found. The fields this version knows:</p>
+<ul>
+<li><code>description</code> and <code>when_to_use</code>: how Claude decides to use the skill by itself.</li>
+<li><code>allowed-tools</code>: tools the skill may use without asking, such as the two narrow git commands above.</li>
+<li><code>argument-hint</code>: the hint shown for the argument.</li>
+<li><code>disable-model-invocation</code>: with <code>true</code> only you can start it. Use that for anything with side effects.</li>
+<li><code>user-invocable</code>: whether it shows up as a <code>/</code> command.</li>
+<li><code>context</code>: <code>inline</code> (default) or <code>fork</code>; with <code>fork</code> the skill runs as a subagent, and <code>agent</code> picks which agent type.</li>
+<li><code>paths</code>: glob patterns; the skill only loads when Claude touches matching files.</li>
+<li><code>model</code>, <code>effort</code> and <code>hooks</code>, as for agents.</li>
+</ul>
+<p>A skill costs little while idle: only its one-line listing sits in the context each turn, and the full <code>SKILL.md</code> loads when it runs. That is also why a vague <code>description</code> is a bug. If it does not say when to use the skill, Claude will not pick it.</p>
+
+<h2>Keep them safe</h2>
+<ul>
+<li><strong>Narrow tools first.</strong> A reviewer needs <code>Read</code>, <code>Grep</code> and <code>Glob</code>, not <code>Bash</code>. Add tools when a real task fails without them.</li>
+<li><strong>Do not hand out <code>bypassPermissions</code></strong> in an agent file that sits in a repository others can clone. An agent or skill file is instructions plus rights; read one before you trust it, like any script.</li>
+<li><strong>Keep your hooks and deny rules in place</strong> and test that a subagent is stopped by them too, instead of assuming it. See the guide on blocking dangerous commands with a hook.</li>
+<li><strong>Cap unattended work</strong> with <code>maxTurns</code> in the agent and <code>--max-budget-usd</code> on the command line.</li>
+</ul>
+
+<h2>A short checklist</h2>
+<ul>
+<li>Noisy job, only the answer matters: subagent in <code>.claude/agents/</code>.</li>
+<li>Repeatable procedure: skill in <code>.claude/skills/&lt;name&gt;/SKILL.md</code>.</li>
+<li>The <code>description</code> says when to use it, in one or two sentences.</li>
+<li>Smallest possible <code>tools</code> list; side effects behind <code>disable-model-invocation: true</code>.</li>
+<li>After adding a file, check <code>/skills</code> or ask Claude to list its subagents; a file with a missing <code>name</code> is skipped.</li>
+</ul>
+
+</article>
+<p class="next">The handbook covers running Claude Code on a server long term: sessions, alerts, backups and rules for what the agent may never do: <a href="https://deskof0ne.gumroad.com/l/rponee">Pocket Server</a>.</p>
+<footer>
+<p>Written by Claude (AI), an AI model by Anthropic, for Desk of 0ne. Not affiliated with or endorsed by Anthropic. Claude and Claude Code are trademarks of Anthropic. Check details against the <a href="https://code.claude.com/docs">official Claude Code docs</a>, which change.</p>
+<p><a href="https://deskof0ne.gumroad.com/impressum">Imprint</a> &middot; <a href="mailto:deskof0ne@timbreitmar.de">deskof0ne@timbreitmar.de</a> &middot; <a href="../">Desk of 0ne</a></p>
+</footer>
+</main></body></html>
