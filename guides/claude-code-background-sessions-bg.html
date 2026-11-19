@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<link rel="icon" href="../favicon.png">
+<link rel="canonical" href="https://deskof0ne.github.io/guides/claude-code-background-sessions-bg.html">
+<title>Run Claude Code in the background (claude --bg) | Desk of 0ne</title>
+<meta name="description" content="claude --bg, agents, logs, attach, stop, rm and respawn explained, checked in Claude Code 2.1.328, and when tmux is still the better choice.">
+<meta name="google-site-verification" content="iqT_7kcDFsqT8Rvl1jkKk4y7R5-wnd1byzxBpzUvVOI" />
+<style>:root{color-scheme:dark;--bg:#000;--panel:#111;--line:#262626;--tx:#f2f2f2;--mu:#9a9a9a;--ac:#fff}
+*{box-sizing:border-box}
+html{-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--tx);font:1rem/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:46rem;margin:0 auto;padding:1.5rem 1.1rem 4rem}
+h1{font-size:2rem;line-height:1.2;margin:2.2rem 0 .6rem;letter-spacing:-.01em}
+h2{font-size:1.2rem;margin:2.8rem 0 .8rem;padding-top:1.2rem;border-top:1px solid var(--line)}
+p{margin:.6rem 0}
+.sub{color:var(--mu);font-size:1.15rem;margin:0}
+a{color:var(--ac);text-underline-offset:3px}
+a:active{opacity:.7}
+a:focus-visible{outline:2px solid var(--ac);outline-offset:3px;border-radius:2px}
+@media (hover:hover){a:hover{color:var(--mu)}}
+.mu{color:var(--mu);font-size:.92rem}
+ul.list{list-style:none;padding:0;margin:1.2rem 0}
+ul.list li{display:grid;grid-template-columns:minmax(7.5rem,auto) 1fr;gap:.2rem 1rem;padding:.8rem 0;border-bottom:1px solid var(--line)}
+ul.list p{margin:.2rem 0;color:var(--mu);font-size:.92rem}
+.lp{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.st{color:var(--mu);font-size:.8rem;margin-left:.3rem}
+@media (max-width:30rem){ul.list li{grid-template-columns:1fr}}
+footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);color:var(--mu);font-size:.82rem}article h1{margin-top:1.6rem}
+article h2{font-size:1.25rem}
+article h3{font-size:1.02rem;margin:1.6rem 0 .3rem}
+article li{margin:.3rem 0}
+code{font:.88em ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel);padding:.08em .35em;border-radius:4px}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:.9rem 1rem;overflow-x:auto;font-size:.86rem;line-height:1.5}
+pre code{background:none;padding:0;font-size:inherit}
+ul.plain{padding-left:1.2rem}
+nav.crumb{font-size:.9rem;color:var(--mu)}
+.next{margin-top:2.6rem;padding:1rem 1.1rem;border:1px solid var(--line);border-radius:8px;color:var(--mu);font-size:.95rem}</style></head><body><main>
+<nav class="crumb"><a href="../">Desk of 0ne</a> / <a href="./">Guides</a></nav>
+<article>
+<h1>Run Claude Code in the background with claude --bg</h1>
+<p class="sub">Start a session, close the terminal, come back later: the commands, their limits, and how to keep it safe.</p>
+
+<p>Claude Code can run a session in the background without you holding a terminal open. Start it with <code>claude --bg</code>, get a short id back, close the window, and come back later to read the output, attach to it or stop it. For a long task on a server this is a lighter alternative to wrapping the session in tmux. This guide covers the commands, what each one does, and the limits to keep in mind. Everything below was checked against Claude Code 2.1.328 with <code>claude --help</code> and a short test session; run the same help on your version.</p>
+
+<h2>Start a background session</h2>
+<pre><code>cd ~/projects/my-app
+claude --bg "Run the test suite, fix the failing tests, and summarize what you changed."</code></pre>
+<p>The command returns at once and prints something like this (the id is a short hex string):</p>
+<pre><code>backgrounded &middot; 2b6153b4
+  claude agents             list sessions
+  claude attach 2b6153b4    open in this terminal
+  claude logs 2b6153b4      show recent output
+  claude stop 2b6153b4      stop this session</code></pre>
+<p>The session keeps working in the directory you started it in. Normal options apply, so you can pick the model and set a spend cap in the same call, for example <code>--model sonnet</code> and <code>--max-budget-usd 5</code>.</p>
+
+<h2>The five commands you need</h2>
+<ul>
+<li><code>claude agents</code> opens a list of your sessions. With <code>--json</code> it prints the active ones, interactive and background, as a JSON array and exits, which works without a terminal and suits scripts. Each entry has the fields <code>cwd</code>, <code>kind</code>, <code>name</code>, <code>pid</code>, <code>sessionId</code>, <code>startedAt</code> and <code>status</code>. Add <code>--all</code> to include finished background sessions, and <code>--cwd &lt;path&gt;</code> to show only those started under a path.</li>
+<li><code>claude logs &lt;id&gt;</code> prints the recent terminal output of a session. It is the raw terminal screen, including colour and cursor escape sequences, so on a plain shell it looks noisy. Pipe it through a tool that strips escape codes, or attach instead.</li>
+<li><code>claude attach &lt;id&gt;</code> opens the session in your terminal as if you had started it there. The left arrow returns to the agent view and Ctrl+Z drops back to your shell. The session keeps running either way. A part of the session name works in place of the id.</li>
+<li><code>claude stop &lt;id&gt;</code> stops a session. Its conversation is kept, and <code>claude attach &lt;id&gt;</code> picks it up again later.</li>
+<li><code>claude rm &lt;id&gt;</code> removes a session from the list and, if it is safe, deletes its worktree. The conversation is kept and still shows up in <code>claude --resume</code>. Unlike <code>stop</code>, it also works on sessions that have already exited. If the worktree holds unpushed commits or uncommitted changes, <code>rm</code> refuses and prints a value you must pass back to <code>--discard-unpushed</code> to confirm; that is deliberate.</li>
+</ul>
+
+<h2>After an update: respawn</h2>
+<p>A background session keeps running the Claude Code build it started with. After you update, <code>claude respawn &lt;id&gt;</code> restarts one session, or <code>claude respawn --all</code> restarts every one, so they pick up the current binary. Check that nothing important is mid-task before you do it.</p>
+
+<h2>Resume a finished session in the background</h2>
+<p>With <code>--resume &lt;session-id&gt;</code>, <code>--bg</code> continues that session in the background under the same id. If the session is already running, it starts a copy and says so, so you do not end up with two writers on one conversation without noticing.</p>
+
+<h2>Background session or tmux?</h2>
+<ul>
+<li><strong>Background session</strong>: you want a task to run while you do something else, you want a list of what is running, and you do not need to see the screen all the time. <code>attach</code> is there when you do.</li>
+<li><strong>tmux</strong>: you want a normal terminal you can share, script with <code>send-keys</code>, or restore the layout of after a reboot. The tmux guide on this site shows the workflow.</li>
+</ul>
+<p>Neither one is a scheduler. For something that must start every night, use cron or a systemd timer with <code>claude -p</code>; the unattended-run guide shows that setup.</p>
+
+<h2>Safety</h2>
+<ul>
+<li>A background session has nobody watching by default. Give it a narrow permission mode and a deny list before you start it, and a hook for the commands that must never run. A prompt you cannot see is a prompt that blocks the session until you attach.</li>
+<li>Set <code>--max-budget-usd</code> on anything long, and look at <code>claude agents</code> now and then. A forgotten session is still a session.</li>
+<li>Clean up with <code>claude rm</code> when a task is done, so old worktrees do not pile up.</li>
+</ul>
+
+<h2>A short checklist</h2>
+<ul>
+<li><code>claude --bg "task"</code> from the project directory, with a budget cap.</li>
+<li><code>claude agents</code> to list, <code>claude logs &lt;id&gt;</code> to peek, <code>claude attach &lt;id&gt;</code> to take over.</li>
+<li><code>claude stop</code> keeps the conversation; <code>claude rm</code> frees the list and the worktree.</li>
+<li><code>claude respawn --all</code> after an update.</li>
+<li>Narrow permissions, deny rules and a hook in place before you walk away.</li>
+</ul>
+
+</article>
+<p class="next">The handbook covers running Claude Code on a server long term: sessions, alerts, backups and rules for what the agent may never do: <a href="https://deskof0ne.gumroad.com/l/rponee">Pocket Server</a>.</p>
+<footer>
+<p>Written by Claude (AI), an AI model by Anthropic, for Desk of 0ne. Not affiliated with or endorsed by Anthropic. Claude and Claude Code are trademarks of Anthropic. Check details against the <a href="https://code.claude.com/docs">official Claude Code docs</a>, which change.</p>
+<p><a href="https://deskof0ne.gumroad.com/impressum">Imprint</a> &middot; <a href="mailto:deskof0ne@timbreitmar.de">deskof0ne@timbreitmar.de</a> &middot; <a href="../">Desk of 0ne</a></p>
+</footer>
+</main></body></html>
