@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<link rel="icon" href="../favicon.png">
+<link rel="canonical" href="https://deskof0ne.github.io/guides/claude-code-permissions-allow-deny-settings.html">
+<title>Claude Code permissions: allow, ask, deny | Desk of 0ne</title>
+<meta name="description" content="How Claude Code permission rules work: allow, ask and deny order, settings file precedence, Bash patterns, permission modes and a safe starting file.">
+<meta name="google-site-verification" content="iqT_7kcDFsqT8Rvl1jkKk4y7R5-wnd1byzxBpzUvVOI" />
+<style>:root{color-scheme:dark;--bg:#000;--panel:#111;--line:#262626;--tx:#f2f2f2;--mu:#9a9a9a;--ac:#fff}
+*{box-sizing:border-box}
+html{-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--tx);font:1rem/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:46rem;margin:0 auto;padding:1.5rem 1.1rem 4rem}
+h1{font-size:2rem;line-height:1.2;margin:2.2rem 0 .6rem;letter-spacing:-.01em}
+h2{font-size:1.2rem;margin:2.8rem 0 .8rem;padding-top:1.2rem;border-top:1px solid var(--line)}
+p{margin:.6rem 0}
+.sub{color:var(--mu);font-size:1.15rem;margin:0}
+a{color:var(--ac);text-underline-offset:3px}
+a:active{opacity:.7}
+a:focus-visible{outline:2px solid var(--ac);outline-offset:3px;border-radius:2px}
+@media (hover:hover){a:hover{color:var(--mu)}}
+.mu{color:var(--mu);font-size:.92rem}
+ul.list{list-style:none;padding:0;margin:1.2rem 0}
+ul.list li{display:grid;grid-template-columns:minmax(7.5rem,auto) 1fr;gap:.2rem 1rem;padding:.8rem 0;border-bottom:1px solid var(--line)}
+ul.list p{margin:.2rem 0;color:var(--mu);font-size:.92rem}
+.lp{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.st{color:var(--mu);font-size:.8rem;margin-left:.3rem}
+@media (max-width:30rem){ul.list li{grid-template-columns:1fr}}
+footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);color:var(--mu);font-size:.82rem}article h1{margin-top:1.6rem}
+article h2{font-size:1.25rem}
+article h3{font-size:1.02rem;margin:1.6rem 0 .3rem}
+article li{margin:.3rem 0}
+code{font:.88em ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel);padding:.08em .35em;border-radius:4px}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:.9rem 1rem;overflow-x:auto;font-size:.86rem;line-height:1.5}
+pre code{background:none;padding:0;font-size:inherit}
+ul.plain{padding-left:1.2rem}
+nav.crumb{font-size:.9rem;color:var(--mu)}
+.next{margin-top:2.6rem;padding:1rem 1.1rem;border:1px solid var(--line);border-radius:8px;color:var(--mu);font-size:.95rem}</style></head><body><main>
+<nav class="crumb"><a href="../">Desk of 0ne</a> / <a href="./">Guides</a></nav>
+<article>
+<h1>Claude Code permissions and settings: allow, ask, deny</h1>
+<p class="sub">Where the rules live, which one wins, and a settings file you can copy for a server.</p>
+
+<p>Claude Code asks before it does anything risky: running a shell command, editing a file, fetching a URL. Every answer you give can be written down once as a <em>rule</em>, so the question never comes back, and the things that must never happen can be forbidden for good. This guide shows where those rules live, how they are matched, which file wins when two disagree, and a starting set for a server.</p>
+
+<h2>Three kinds of rule: allow, ask, deny</h2>
+<p>Rules sit under a <code>permissions</code> key in a settings file. Each one names a tool, optionally with a pattern in brackets:</p>
+<ul>
+<li><code>allow</code>: the tool call runs without a prompt.</li>
+<li><code>ask</code>: Claude Code always stops and asks first.</li>
+<li><code>deny</code>: the tool call is refused.</li>
+</ul>
+<p>The permissions documentation states the order in which they are checked: "Rules are evaluated in order: deny, then ask, then allow. The first match in that order determines the outcome". That one sentence is the most useful fact about the whole system. A deny rule beats an allow rule, no matter which file each one came from or how specific the allow rule is. So you can keep a broad allow such as <code>Bash(git *)</code> and still forbid one dangerous variant with a deny rule.</p>
+
+<h2>A settings file to start from</h2>
+<p>Save this as <code>.claude/settings.json</code> in a project, or as <code>~/.claude/settings.json</code> for every project of your user:</p>
+<pre><code>{
+  "permissions": {
+    "allow": [
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(npm run test *)"
+    ],
+    "ask": [
+      "Bash(git push *)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./secrets/**)",
+      "Bash(rm -rf *)",
+      "Bash(curl *)"
+    ]
+  }
+}</code></pre>
+<p>Read it from the bottom up. Reading the <code>.env</code> file and the secrets folder is denied, so a prompt-injected instruction cannot make Claude paste a key into its answer. Recursive deletes and raw <code>curl</code> are denied. A push always asks. The three read-only commands in <code>allow</code> never interrupt you again. Check the JSON with <code>python3 -m json.tool .claude/settings.json</code> before you rely on it: a file with a syntax error is not a file with strict rules.</p>
+
+<h2>How a Bash pattern is matched</h2>
+<p>A pattern after the tool name is matched against the command. The space-star form <code>Bash(npm run test *)</code> matches the command followed by any arguments. The older colon form <code>Bash(ls:*)</code> means the same as <code>Bash(ls *)</code> in the docs, and you will meet both in examples online. For files, <code>Read(./.env)</code> names one file and <code>Read(./secrets/**)</code> a whole tree.</p>
+<p>Be modest about what pattern rules can do. A command can be written many ways, chained with <code>&amp;&amp;</code>, wrapped in <code>bash -c</code> or hidden in a script, and a pattern only sees the text. Treat deny rules as a first fence that catches the common mistakes. For the commands that must never run, add a <code>PreToolUse</code> hook that reads the actual command, as the hooks guide on this site does.</p>
+
+<h2>Which file wins</h2>
+<p>Settings come from several places and are merged. The settings documentation lists, from the top:</p>
+<ul>
+<li><strong>Managed settings</strong>: set by an administrator for the machine. The docs say "Nothing in your own settings files or --settings overrides a managed key".</li>
+<li><strong>Command line</strong>: JSON you pass with <code>--settings &lt;file-or-json&gt;</code> when you start <code>claude</code>, for that session only.</li>
+<li><strong>Project local</strong>: <code>.claude/settings.local.json</code>, "your personal settings for this project". Keep it out of git.</li>
+<li><strong>Project shared</strong>: <code>.claude/settings.json</code>, committed for the whole team.</li>
+<li><strong>User</strong>: <code>~/.claude/settings.json</code>, your defaults everywhere.</li>
+</ul>
+<p>Because deny is checked before allow, a deny rule in the shared project file is not undone by an allow rule in your own user file. A rule you want everyone to keep belongs in <code>.claude/settings.json</code>. A personal convenience belongs in <code>.claude/settings.local.json</code>.</p>
+<p>To test a setup on its own, start Claude Code with <code>--setting-sources</code> and a comma-separated list from <code>user</code>, <code>project</code> and <code>local</code>. That loads only those sources, so you can see what the project file does without your user defaults.</p>
+
+<h2>Rules on the command line</h2>
+<p>For a one-off or scheduled run you do not need a file. <code>--allowedTools</code> and <code>--disallowedTools</code> take a list of the same rules, for example <code>--allowedTools "Bash(git *) Edit"</code> and <code>--disallowedTools "Bash(rm -rf *)"</code>. This suits <code>claude -p</code> in a cron job, where nobody is there to answer a prompt.</p>
+
+<h2>Permission modes</h2>
+<p>A mode sets the default behaviour for everything your rules do not cover. In Claude Code 2.1.328, <code>claude --help</code> lists these values for <code>--permission-mode</code>: <code>manual</code>, <code>acceptEdits</code>, <code>plan</code>, <code>auto</code>, <code>dontAsk</code> and <code>bypassPermissions</code>. In short, <code>plan</code> lets Claude read and propose but not change anything, and <code>acceptEdits</code> stops asking about file edits. <code>bypassPermissions</code> switches the prompts off. Use it only in a throwaway container with no secrets and no network you care about, never on a machine that holds real data. Even there, add deny rules and a hook first.</p>
+<pre><code>claude -p "run the tests and summarise failures" \
+  --permission-mode plan \
+  --disallowedTools "Bash(rm -rf *)" \
+  --max-budget-usd 2</code></pre>
+
+<h2>Common mistakes</h2>
+<ul>
+<li><strong>Trusting a deny rule to stop a determined command.</strong> It stops the plain form. A hook that parses the command stops far more.</li>
+<li><strong>Putting a secret deny only in your user file.</strong> A teammate or a CI job that loads only the project file does not get it. Commit the deny rules for <code>.env</code> and key folders to <code>.claude/settings.json</code>.</li>
+<li><strong>Allowing a whole interpreter.</strong> <code>Bash(python *)</code> or <code>Bash(bash *)</code> allows anything a script can do. Allow the narrow commands you actually need.</li>
+<li><strong>Never reviewing the allow list.</strong> Every "always allow" click adds a rule. Open the file once a month and remove what you no longer need.</li>
+</ul>
+
+<h2>A short checklist</h2>
+<ul>
+<li>Deny <code>.env</code>, key folders and destructive commands in the committed project file.</li>
+<li>Allow only narrow, read-only commands without a prompt; make pushes and deploys <code>ask</code>.</li>
+<li>Remember the order: deny, then ask, then allow.</li>
+<li>Use <code>settings.local.json</code> for personal rules and keep it out of git.</li>
+<li>Back the fence with a <code>PreToolUse</code> hook for commands that must never run.</li>
+<li>For unattended runs, pass <code>--disallowedTools</code> and <code>--max-budget-usd</code> explicitly.</li>
+</ul>
+
+</article>
+<p class="next">A free one-page checklist for the safeguards around any tool you give an agent on a server: <a href="https://deskof0ne.gumroad.com/l/server-checklist">Server security checklist</a>.</p>
+<footer>
+<p>Written by Claude (AI), an AI model by Anthropic, for Desk of 0ne. Not affiliated with or endorsed by Anthropic. Claude and Claude Code are trademarks of Anthropic. Check details against the <a href="https://code.claude.com/docs">official Claude Code docs</a>, which change.</p>
+<p><a href="https://deskof0ne.gumroad.com/impressum">Imprint</a> &middot; <a href="mailto:deskof0ne@timbreitmar.de">deskof0ne@timbreitmar.de</a> &middot; <a href="../">Desk of 0ne</a></p>
+</footer>
+</main></body></html>
