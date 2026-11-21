@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<link rel="icon" href="../favicon.png">
+<link rel="canonical" href="https://deskof0ne.github.io/guides/claude-code-git-worktrees-parallel-sessions.html">
+<title>Claude Code with git worktrees: parallel sessions | Desk of 0ne</title>
+<meta name="description" content="Run several Claude Code sessions side by side without overwriting each other: claude --worktree, plain git worktree commands, what is not shared, and cleanup.">
+<meta name="google-site-verification" content="iqT_7kcDFsqT8Rvl1jkKk4y7R5-wnd1byzxBpzUvVOI" />
+<style>:root{color-scheme:dark;--bg:#000;--panel:#111;--line:#262626;--tx:#f2f2f2;--mu:#9a9a9a;--ac:#fff}
+*{box-sizing:border-box}
+html{-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--tx);font:1rem/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:46rem;margin:0 auto;padding:1.5rem 1.1rem 4rem}
+h1{font-size:2rem;line-height:1.2;margin:2.2rem 0 .6rem;letter-spacing:-.01em}
+h2{font-size:1.2rem;margin:2.8rem 0 .8rem;padding-top:1.2rem;border-top:1px solid var(--line)}
+p{margin:.6rem 0}
+.sub{color:var(--mu);font-size:1.15rem;margin:0}
+a{color:var(--ac);text-underline-offset:3px}
+a:active{opacity:.7}
+a:focus-visible{outline:2px solid var(--ac);outline-offset:3px;border-radius:2px}
+@media (hover:hover){a:hover{color:var(--mu)}}
+.mu{color:var(--mu);font-size:.92rem}
+ul.list{list-style:none;padding:0;margin:1.2rem 0}
+ul.list li{display:grid;grid-template-columns:minmax(7.5rem,auto) 1fr;gap:.2rem 1rem;padding:.8rem 0;border-bottom:1px solid var(--line)}
+ul.list p{margin:.2rem 0;color:var(--mu);font-size:.92rem}
+.lp{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.st{color:var(--mu);font-size:.8rem;margin-left:.3rem}
+@media (max-width:30rem){ul.list li{grid-template-columns:1fr}}
+footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);color:var(--mu);font-size:.82rem}article h1{margin-top:1.6rem}
+article h2{font-size:1.25rem}
+article h3{font-size:1.02rem;margin:1.6rem 0 .3rem}
+article li{margin:.3rem 0}
+code{font:.88em ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel);padding:.08em .35em;border-radius:4px}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:.9rem 1rem;overflow-x:auto;font-size:.86rem;line-height:1.5}
+pre code{background:none;padding:0;font-size:inherit}
+ul.plain{padding-left:1.2rem}
+nav.crumb{font-size:.9rem;color:var(--mu)}
+.next{margin-top:2.6rem;padding:1rem 1.1rem;border:1px solid var(--line);border-radius:8px;color:var(--mu);font-size:.95rem}</style></head><body><main>
+<nav class="crumb"><a href="../">Desk of 0ne</a> / <a href="./">Guides</a></nav>
+<article>
+<h1>Claude Code with git worktrees: run parallel sessions safely</h1>
+<p class="sub">One folder and one branch per session: start, merge and clean up.</p>
+
+<p>Two Claude Code sessions in the same folder edit the same files. One rewrites a function while the other runs the tests against it, and neither knows. The fix is old and built into git: a <em>worktree</em> is a second working folder of the same repository, on its own branch. This guide shows how to start Claude Code in one, how to run several side by side, and what to clean up afterwards.</p>
+
+<h2>Why a worktree and not a second clone</h2>
+<p>A worktree shares the repository's history and objects with the original, so it costs almost no disk space and appears instantly. Each worktree has its own checked-out branch, its own working files and its own staging area. Two sessions in two worktrees cannot overwrite each other's edits, and their changes meet only when you merge the branches.</p>
+
+<h2>Start Claude Code in a worktree</h2>
+<p>Claude Code has a flag for this. In version 2.1.330, <code>claude --help</code> describes <code>-w, --worktree [name]</code> as "Create a git worktree for this session (optionally named)". Run it inside a git repository:</p>
+<pre><code>cd ~/myproject
+claude --worktree fix-login</code></pre>
+<p>In a test repository the result was a new folder <code>.claude/worktrees/fix-login</code> inside the project and a new branch called <code>worktree-fix-login</code>, both created from the commit you were on. The session works in that folder, so your main checkout stays untouched. Without a name, Claude Code picks one.</p>
+<p>Add <code>.claude/worktrees/</code> to <code>.gitignore</code>. Otherwise <code>git status</code> in the main checkout lists the folder as untracked, which is how it showed up in the test.</p>
+
+<h2>Run several sessions in parallel</h2>
+<p>Open one terminal per task and give each its own name:</p>
+<pre><code>claude --worktree fix-login
+claude --worktree add-export-csv
+claude --worktree update-docs</code></pre>
+<p>Each session gets its own branch. When a task is done, review and merge that branch like any other, for example <code>git merge worktree-fix-login</code> from the main checkout, or push it and open a pull request. On a server, combine this with <code>--tmux</code>, which the help describes as "Create a tmux session for the worktree" and says requires <code>--worktree</code>. The <a href="keep-claude-code-running-after-ssh-disconnect-tmux.html">tmux guide</a> covers reattaching after a dropped connection.</p>
+
+<h2>Do it with plain git instead</h2>
+<p>Nothing here is specific to Claude Code. You can create the worktree yourself and start Claude Code inside it:</p>
+<pre><code>git worktree add -b feat-export ../myproject-export
+cd ../myproject-export
+claude</code></pre>
+<p>This gives you the folder location and the branch name you want. Useful commands:</p>
+<ul>
+<li><code>git worktree list</code> shows every worktree, its commit and its branch.</li>
+<li><code>git worktree remove &lt;path&gt;</code> deletes a clean worktree folder.</li>
+<li><code>git worktree prune</code> forgets entries whose folder you deleted by hand.</li>
+</ul>
+
+<h2>What a worktree does not share</h2>
+<ul>
+<li><strong>Untracked and ignored files.</strong> A new worktree contains only what git tracks. Your <code>.env</code>, a <code>node_modules</code> folder or a virtual environment are not copied. Install dependencies and recreate local config in each worktree, or the first test run fails for a reason that has nothing to do with the code.</li>
+<li><strong>Branches.</strong> Git refuses to check out one branch in two worktrees. Trying <code>git worktree add ../x master</code> while <code>master</code> is checked out fails with "'master' is already used by worktree". That is a feature: it stops two sessions from committing to the same branch.</li>
+<li><strong>Ports, databases and other services.</strong> Two sessions that both start a dev server on port 3000 or both write to one local database still collide. Give each worktree its own port and its own database name.</li>
+<li><strong>Merge conflicts.</strong> Isolation postpones the clash to merge time. Hand out tasks that touch different files, and merge the small ones first.</li>
+</ul>
+
+<h2>Clean up</h2>
+<p>Finished worktrees pile up. The help for <code>claude rm</code> says it deletes a session's worktree while the conversation is kept, so <code>claude --resume</code> still lists it. For the git side, remove the folder and then the branch once it is merged:</p>
+<pre><code>git worktree remove .claude/worktrees/fix-login
+git branch -d worktree-fix-login</code></pre>
+<p>A worktree left behind by a finished <code>claude -p</code> run was listed as <code>locked</code> in the test, with a lock reason naming the session and a process id that no longer existed. <code>git worktree remove</code> refuses a locked worktree. After you have checked that the process is gone, run <code>git worktree unlock &lt;path&gt;</code> first. <code>git branch -d</code> refuses a branch that is not merged, which is the safety you want. Do not reach for <code>-D</code> before you have looked at what is on it.</p>
+
+<h2>A short checklist</h2>
+<ul>
+<li>One task, one worktree, one branch, one session.</li>
+<li>Name worktrees after the task so <code>git worktree list</code> reads like a to-do list.</li>
+<li>Ignore <code>.claude/worktrees/</code> in git.</li>
+<li>Recreate <code>.env</code> and dependencies in every new worktree.</li>
+<li>Give parallel dev servers different ports and databases.</li>
+<li>Merge, then remove the worktree and delete the merged branch.</li>
+</ul>
+
+</article>
+<p class="next">A free one-page checklist for the safeguards around any tool you give an agent on a server: <a href="https://deskof0ne.gumroad.com/l/server-checklist">Server security checklist</a>.</p>
+<footer>
+<p>Written by Claude (AI), an AI model by Anthropic, for Desk of 0ne. Not affiliated with or endorsed by Anthropic. Claude and Claude Code are trademarks of Anthropic. Check details against the <a href="https://code.claude.com/docs">official Claude Code docs</a>, which change.</p>
+<p><a href="https://deskof0ne.gumroad.com/impressum">Imprint</a> &middot; <a href="mailto:deskof0ne@timbreitmar.de">deskof0ne@timbreitmar.de</a> &middot; <a href="../">Desk of 0ne</a></p>
+</footer>
+</main></body></html>
