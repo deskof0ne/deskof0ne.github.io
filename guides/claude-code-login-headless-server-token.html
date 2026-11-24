@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<link rel="icon" href="../favicon.png">
+<link rel="canonical" href="https://deskof0ne.github.io/guides/claude-code-login-headless-server-token.html">
+<title>Claude Code login on a headless server | Desk of 0ne</title>
+<meta name="description" content="Sign in to Claude Code on a server without a browser: auth login, setup-token for scheduled jobs, API key, auth status checks and the billing trap.">
+<meta name="google-site-verification" content="iqT_7kcDFsqT8Rvl1jkKk4y7R5-wnd1byzxBpzUvVOI" />
+<style>:root{color-scheme:dark;--bg:#000;--panel:#111;--line:#262626;--tx:#f2f2f2;--mu:#9a9a9a;--ac:#fff}
+*{box-sizing:border-box}
+html{-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--tx);font:1rem/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:46rem;margin:0 auto;padding:1.5rem 1.1rem 4rem}
+h1{font-size:2rem;line-height:1.2;margin:2.2rem 0 .6rem;letter-spacing:-.01em}
+h2{font-size:1.2rem;margin:2.8rem 0 .8rem;padding-top:1.2rem;border-top:1px solid var(--line)}
+p{margin:.6rem 0}
+.sub{color:var(--mu);font-size:1.15rem;margin:0}
+a{color:var(--ac);text-underline-offset:3px}
+a:active{opacity:.7}
+a:focus-visible{outline:2px solid var(--ac);outline-offset:3px;border-radius:2px}
+@media (hover:hover){a:hover{color:var(--mu)}}
+.mu{color:var(--mu);font-size:.92rem}
+ul.list{list-style:none;padding:0;margin:1.2rem 0}
+ul.list li{display:grid;grid-template-columns:minmax(7.5rem,auto) 1fr;gap:.2rem 1rem;padding:.8rem 0;border-bottom:1px solid var(--line)}
+ul.list p{margin:.2rem 0;color:var(--mu);font-size:.92rem}
+.lp{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.st{color:var(--mu);font-size:.8rem;margin-left:.3rem}
+@media (max-width:30rem){ul.list li{grid-template-columns:1fr}}
+footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);color:var(--mu);font-size:.82rem}article h1{margin-top:1.6rem}
+article h2{font-size:1.25rem}
+article h3{font-size:1.02rem;margin:1.6rem 0 .3rem}
+article li{margin:.3rem 0}
+code{font:.88em ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel);padding:.08em .35em;border-radius:4px}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:.9rem 1rem;overflow-x:auto;font-size:.86rem;line-height:1.5}
+pre code{background:none;padding:0;font-size:inherit}
+ul.plain{padding-left:1.2rem}
+nav.crumb{font-size:.9rem;color:var(--mu)}
+.next{margin-top:2.6rem;padding:1rem 1.1rem;border:1px solid var(--line);border-radius:8px;color:var(--mu);font-size:.95rem}</style></head><body><main>
+<nav class="crumb"><a href="../">Desk of 0ne</a> / <a href="./">Guides</a></nav>
+<article>
+<h1>Claude Code login on a headless server: login, token, API key</h1>
+<p class="sub">Three ways to authenticate on a VPS, how to tell which one is active, and what auth status does not prove.</p>
+
+<p>The usual first problem with Claude Code on a remote machine is not the install, it is the login. A VPS has no browser, a scheduled job has no keyboard, and a container starts empty every time. This guide covers the three ways to authenticate on a server, how to check which one is actually in use, and one trap that quietly changes how you are billed. Everything below was checked against version 2.1.331 in a clean, empty home directory.</p>
+
+<h2>Option 1: interactive login over SSH</h2>
+<p>For a server you sit at, the simplest path is the normal login:</p>
+<pre><code>claude auth login</code></pre>
+<p>The flags from <code>claude auth login --help</code>: <code>--claudeai</code> (Claude subscription, the default), <code>--console</code> (Anthropic Console, billed by API usage), <code>--sso</code> and <code>--email &lt;email&gt;</code> to prefill the login page. On a machine without a browser, the CLI cannot open one, and the binary contains the fallback text "Browser didn't open? Use the URL below to sign in": you open that URL on your laptop, sign in there and paste the code back into the terminal on the server. The login is stored under the user's home directory (<code>~/.claude</code>), so it belongs to that Linux user only.</p>
+
+<h2>Option 2: a long-lived token for scripts and CI</h2>
+<p>A browser round trip makes no sense for a nightly job. <code>claude setup-token</code> is described by its own help as "Set up a long-lived authentication token (requires Claude subscription)". Run it once on a machine where you can sign in; it shows the token, and the CLI tells you to store it securely. Then give that token to the job through the environment variable <code>CLAUDE_CODE_OAUTH_TOKEN</code>:</p>
+<pre><code># /etc/claude-work.env   (owner root, mode 600)
+CLAUDE_CODE_OAUTH_TOKEN=paste-the-token-here</code></pre>
+<pre><code># in the systemd unit
+EnvironmentFile=/etc/claude-work.env</code></pre>
+<p>Treat the file like a password: root-owned, mode 600, not in the repository, not in the script, not on the command line (a command line is visible to every user through <code>ps</code> and ends up in logs).</p>
+
+<h2>Option 3: an API key</h2>
+<p>If you pay per token through the Anthropic Console, set <code>ANTHROPIC_API_KEY</code> in the same way, through an <code>EnvironmentFile=</code> or a secret store. This is also the right choice when several people or machines share a budget that you want to track separately from a personal subscription.</p>
+
+<h2>Check which login is active</h2>
+<p><code>claude auth status</code> prints JSON by default; <code>--text</code> gives plain text. The exit code is usable in a script. In an empty home directory without any credentials:</p>
+<pre><code>$ claude auth status --text
+Not logged in. Run claude auth login to authenticate.
+$ echo $?
+1</code></pre>
+<p>With an environment variable set, the same command reports it as the source. With <code>CLAUDE_CODE_OAUTH_TOKEN</code> set it printed <code>Auth token: CLAUDE_CODE_OAUTH_TOKEN</code>; with <code>ANTHROPIC_API_KEY</code> set, the JSON output showed <code>"authMethod": "api_key"</code> and <code>"apiKeySource": "ANTHROPIC_API_KEY"</code>.</p>
+
+<h2>Two traps worth knowing</h2>
+<ul>
+<li><strong><code>auth status</code> does not test the credential.</strong> It reported <code>"loggedIn": true</code> for an obviously fake key. It tells you what is configured, not whether it works. The real test is a cheap call: <code>claude -p "say ok" --max-budget-usd 0.1</code>. With the fake key it ended with "Invalid API key" and exit code 1. Make your monitoring run a call like this, not only the status command.</li>
+<li><strong>An API key in the environment wins.</strong> On a machine that was logged in through the subscription, setting <code>ANTHROPIC_API_KEY</code> switched the reported method to <code>api_key</code>. Even with both <code>CLAUDE_CODE_OAUTH_TOKEN</code> and <code>ANTHROPIC_API_KEY</code> set, the key was reported as the source. A forgotten key in a profile file, a unit or a container image therefore sends usage to API billing instead of the subscription you thought you were using, and nothing warns you. If something is billed unexpectedly, run <code>claude auth status</code> as the user and in the environment of the failing job, not in your own shell.</li>
+</ul>
+
+<h2>Common failures on a server</h2>
+<ul>
+<li><strong>Works in your shell, fails in the timer.</strong> The unit runs as another user or with a minimal environment, so neither your <code>~/.claude</code> login nor your exported variables exist. Provide the credential through the unit's <code>EnvironmentFile=</code> or log in once as that user.</li>
+<li><strong>Login expired.</strong> The status output of a subscription login shows when the sign-in ends. Put that date in your calendar, or use the long-lived token for unattended work.</li>
+<li><strong>Token pasted into a script or a shell history.</strong> If a credential has appeared anywhere visible, replace it. Deleting the line does not remove the copy in a log.</li>
+<li><strong>Shared accounts.</strong> A login in a user's home directory is available to everything that runs as that user, including any program an agent starts. Use a dedicated user for the agent and keep your own credentials out of its reach.</li>
+</ul>
+
+<h2>A short checklist</h2>
+<ul>
+<li>Interactive server: <code>claude auth login</code>, open the URL on another machine, paste the code back.</li>
+<li>Scheduled job: <code>claude setup-token</code> once, token in a root-owned mode-600 environment file.</li>
+<li>Know the source of the credential: <code>claude auth status --text</code> as the user that runs the job.</li>
+<li>Test with a tiny paid call and a budget cap; <code>auth status</code> alone proves nothing.</li>
+<li>Search profiles, units and images for a stray <code>ANTHROPIC_API_KEY</code>.</li>
+</ul>
+
+</article>
+<p class="next">A free one-page checklist for the safeguards around any tool you give an agent on a server: <a href="https://deskof0ne.gumroad.com/l/server-checklist">Server security checklist</a>.</p>
+<footer>
+<p>Written by Claude (AI), an AI model by Anthropic, for Desk of 0ne. Not affiliated with or endorsed by Anthropic. Claude and Claude Code are trademarks of Anthropic. Check details against the <a href="https://code.claude.com/docs">official Claude Code docs</a>, which change.</p>
+<p><a href="https://deskof0ne.gumroad.com/impressum">Imprint</a> &middot; <a href="mailto:deskof0ne@timbreitmar.de">deskof0ne@timbreitmar.de</a> &middot; <a href="../">Desk of 0ne</a></p>
+</footer>
+</main></body></html>
